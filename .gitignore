@@ -1,0 +1,32 @@
+# Node
+node_modules/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Variables de entorno
+.env
+.env.local
+*.env
+
+# Keys / Certificates
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log

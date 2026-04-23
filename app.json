@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "App Chef",
+    "slug": "app-chef",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#4A2C2A"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.appchef.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#4A2C2A"
+      },
+      "package": "com.appchef.app",
+      "config": {
+        "googleMaps": {
+          "apiKey": "TU_API_KEY_AQUI"
+        }
+      }
+    },
+    "web": {
+      "favicon": "./assets/icon.png",
+      "bundler": "metro"
+    }
+  }
+}
