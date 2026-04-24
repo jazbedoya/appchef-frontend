@@ -18,6 +18,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import ChatScreen from '../screens/ChatScreen';
 import AuthScreen from '../screens/AuthScreen';
 import CreateEventScreen from '../screens/CreateEventScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -65,6 +66,11 @@ const MapStack = () => (
       name="EventDetailFromMap"
       component={EventDetailScreen}
       options={{ headerTransparent: true, headerTintColor: colors.white }}
+    />
+    <Stack.Screen
+      name="UserProfile"
+      component={UserProfileScreen}
+      options={{ headerShown: false }}
     />
   </Stack.Navigator>
 );
