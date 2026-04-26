@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Platform, ActivityIndicator, Dimensions,
@@ -6,10 +6,21 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 
-import { loginUser, registerUser, selectAuthLoading, selectAuthError, clearError } from '../store/authSlice';
+import {
+  loginUser, registerUser, resendVerificationEmail, loginWithGoogle,
+  selectAuthLoading, selectAuthError, selectPendingVerificationEmail,
+  clearError, clearPendingVerification,
+} from '../store/authSlice';
 import { colors } from '../theme/colors';
 import { spacing, borderRadius } from '../theme/spacing';
+import {
+  GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID,
+} from '../services/api';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -43,9 +54,35 @@ const AuthScreen = () => {
   const dispatch = useDispatch();
   const isLoading = useSelector(selectAuthLoading);
   const authError = useSelector(selectAuthError);
+  const pendingVerificationEmail = useSelector(selectPendingVerificationEmail);
 
   const [mode, setMode] = useState('login');
   const [showPassword, setShowPassword] = useState(false);
+  const [resendFeedback, setResendFeedback] = useState(null);
+
+  // Expo Go cannot register a custom URL scheme, so Google's Web Client
+  // (which requires http(s) redirects) must go through Expo's auth proxy.
+  // Replace this with a native deep-link URI when shipping a dev/production build.
+  const [googleRequest, googleResponse, promptGoogle] = Google.useAuthRequest({
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+    redirectUri: 'https://auth.expo.io/@anonymous/app-chef',
+  });
+
+  useEffect(() => {
+    if (googleRequest) {
+      console.log('🔵 Google OAuth redirect URI:', googleRequest.redirectUri);
+    }
+  }, [googleRequest]);
+
+  useEffect(() => {
+    if (googleResponse?.type === 'success') {
+      const idToken = googleResponse.params?.id_token
+        || googleResponse.authentication?.idToken;
+      if (idToken) dispatch(loginWithGoogle(idToken));
+    }
+  }, [googleResponse, dispatch]);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -95,6 +132,23 @@ const AuthScreen = () => {
     }));
   };
 
+  const handleResendVerification = async () => {
+    if (!pendingVerificationEmail) return;
+    setResendFeedback(null);
+    const result = await dispatch(resendVerificationEmail(pendingVerificationEmail));
+    if (result.meta.requestStatus === 'fulfilled') {
+      setResendFeedback('Te enviamos un nuevo correo. Revisa tu bandeja.');
+    } else {
+      setResendFeedback('No se pudo reenviar. Inténtalo de nuevo.');
+    }
+  };
+
+  const handleBackToLogin = () => {
+    dispatch(clearPendingVerification());
+    setResendFeedback(null);
+    setMode('login');
+  };
+
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -115,6 +169,40 @@ const AuthScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.card}>
+          {pendingVerificationEmail ? (
+            <View style={styles.verifyContainer}>
+              <View style={styles.verifyIconCircle}>
+                <Icon name="mail-unread-outline" size={36} color={colors.accent} />
+              </View>
+              <Text style={styles.verifyTitle}>Confirma tu correo</Text>
+              <Text style={styles.verifyBody}>
+                Te enviamos un email a{'\n'}
+                <Text style={styles.verifyEmail}>{pendingVerificationEmail}</Text>
+                {'\n\n'}
+                Haz clic en el enlace y luego vuelve aquí para iniciar sesión.
+              </Text>
+
+              {resendFeedback && (
+                <Text style={styles.verifyFeedback}>{resendFeedback}</Text>
+              )}
+
+              <TouchableOpacity
+                style={[styles.submitButton, isLoading && styles.submitButtonDisabled]}
+                onPress={handleResendVerification}
+                disabled={isLoading}
+              >
+                {isLoading
+                  ? <ActivityIndicator size="small" color={colors.white} />
+                  : <Text style={styles.submitButtonText}>Reenviar correo</Text>
+                }
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handleBackToLogin} style={styles.verifyBackBtn}>
+                <Text style={styles.verifyBackText}>Volver al inicio de sesión</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+          <>
           {/* Tabs */}
           <View style={styles.tabRow}>
             <TouchableOpacity
@@ -137,6 +225,22 @@ const AuthScreen = () => {
               <Text style={styles.errorBannerText}>{authError}</Text>
             </View>
           )}
+
+          {/* Google Sign-In */}
+          <TouchableOpacity
+            style={[styles.googleButton, (!googleRequest || isLoading) && styles.submitButtonDisabled]}
+            onPress={() => promptGoogle()}
+            disabled={!googleRequest || isLoading}
+          >
+            <Icon name="logo-google" size={18} color="#2C3E2D" style={{ marginRight: spacing.sm }} />
+            <Text style={styles.googleButtonText}>Continuar con Google</Text>
+          </TouchableOpacity>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>o</Text>
+            <View style={styles.dividerLine} />
+          </View>
 
           {/* Login */}
           {mode === 'login' && (
@@ -206,6 +310,8 @@ const AuthScreen = () => {
                 }
               </TouchableOpacity>
             </View>
+          )}
+          </>
           )}
         </View>
       </ScrollView>
@@ -352,6 +458,87 @@ const styles = StyleSheet.create({
 
   nameRow: { flexDirection: 'row', gap: spacing.sm },
   nameField: { flex: 1 },
+
+  // ─── Google sign-in ───
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2D9C8',
+    marginBottom: spacing.base,
+  },
+  googleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2C3E2D',
+    fontFamily: Platform.select({ web: '"DM Sans", "Helvetica Neue", sans-serif' }),
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.base,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#E2D9C8' },
+  dividerText: {
+    marginHorizontal: spacing.sm,
+    fontSize: 12,
+    color: '#7A7A6E',
+    letterSpacing: 1,
+  },
+
+  // ─── Verify view ───
+  verifyContainer: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+  },
+  verifyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FAF1DA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.base,
+  },
+  verifyTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#2C3E2D',
+    marginBottom: spacing.sm,
+    fontFamily: Platform.select({ web: '"Cormorant Garamond", Georgia, serif', ios: 'Georgia-Bold', android: 'serif' }),
+  },
+  verifyBody: {
+    fontSize: 14,
+    color: '#555',
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: spacing.base,
+    fontFamily: Platform.select({ web: '"DM Sans", "Helvetica Neue", sans-serif' }),
+  },
+  verifyEmail: {
+    fontWeight: '600',
+    color: '#2C3E2D',
+  },
+  verifyFeedback: {
+    fontSize: 13,
+    color: colors.accent,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  verifyBackBtn: {
+    marginTop: spacing.base,
+    padding: spacing.sm,
+  },
+  verifyBackText: {
+    fontSize: 14,
+    color: '#2C3E2D',
+    textDecorationLine: 'underline',
+    fontFamily: Platform.select({ web: '"DM Sans", "Helvetica Neue", sans-serif' }),
+  },
 
   // ─── Botón principal ───
   submitButton: {

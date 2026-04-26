@@ -17,14 +17,34 @@ const authService = {
       last_name: lastName,
       phone_number: phoneNumber || undefined,
     });
-    const { access_token, refresh_token } = response.data;
-    await authService.persistTokens(access_token, refresh_token);
-    const user = await authService.getCurrentUser();
-    return { user, tokens: response.data };
+    return { pendingVerificationEmail: email, message: response.data?.message };
   },
 
   async login({ email, password }) {
-    const response = await userApi.post('/auth/login', { email, password });
+    try {
+      const response = await userApi.post('/auth/login', { email, password });
+      const { access_token, refresh_token } = response.data;
+      await authService.persistTokens(access_token, refresh_token);
+      const user = await authService.getCurrentUser();
+      return { user, tokens: response.data };
+    } catch (error) {
+      if (error.response?.status === 403 && error.response?.data?.detail === 'email_not_verified') {
+        const err = new Error('email_not_verified');
+        err.code = 'email_not_verified';
+        err.email = email;
+        throw err;
+      }
+      throw error;
+    }
+  },
+
+  async resendVerification(email) {
+    const response = await userApi.post('/auth/resend-verification', { email });
+    return response.data;
+  },
+
+  async googleSignIn(idToken) {
+    const response = await userApi.post('/auth/google', { id_token: idToken });
     const { access_token, refresh_token } = response.data;
     await authService.persistTokens(access_token, refresh_token);
     const user = await authService.getCurrentUser();

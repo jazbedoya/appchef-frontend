@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Dimensions, Alert, Switch, Platform,
+  Dimensions, Alert, Switch, Platform, Image,
   Modal, TextInput, Linking, ActivityIndicator, KeyboardAvoidingView,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -138,9 +138,11 @@ const ProfileScreen = ({ navigation }) => {
   const [language,           setLanguage]           = useState('es');
   const [profilePublic,      setProfilePublic]      = useState(true);
 
-  const [editForm, setEditForm] = useState({ first_name: '', last_name: '', bio: '', city: '' });
+  const [editForm, setEditForm] = useState({ first_name: '', last_name: '', bio: '', city: '', latitude: null, longitude: null });
+  const [geocoding, setGeocoding] = useState(false);
   const [hostForm, setHostForm] = useState({ specialties: '', kitchen_description: '' });
   const [pwForm,   setPwForm]   = useState({ current: '', next: '', confirm: '' });
+  const [activeTab, setActiveTab] = useState('Próximas');
 
   // ── Effects ──
   useEffect(() => {
@@ -166,9 +168,28 @@ const ProfileScreen = ({ navigation }) => {
         last_name:  user.profile.last_name  || '',
         bio:        user.profile.bio        || '',
         city:       user.profile.city       || '',
+        latitude:   user.profile.latitude   || null,
+        longitude:  user.profile.longitude  || null,
       });
     }
   }, [user]);
+
+  const geocodeCity = async (cityVal) => {
+    if (!cityVal?.trim()) return null;
+    setGeocoding(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cityVal)}&format=json&limit=1`;
+      const res = await fetch(url, { headers: { 'User-Agent': 'AppChef/1.0' } });
+      const data = await res.json();
+      if (data.length > 0) {
+        const coords = { latitude: parseFloat(data[0].lat), longitude: parseFloat(data[0].lon) };
+        setEditForm(f => ({ ...f, ...coords }));
+        return coords;
+      }
+    } catch (_) {}
+    finally { setGeocoding(false); }
+    return null;
+  };
 
   if (!user) return null;
 
@@ -190,7 +211,24 @@ const ProfileScreen = ({ navigation }) => {
   const handleSaveProfile = async () => {
     setIsSaving(true);
     try {
-      await userApi.put(`/users/${user.id}`, editForm);
+      let lat = editForm.latitude;
+      let lng = editForm.longitude;
+
+      // Si hay ciudad pero sin coordenadas, geocodificar ahora y usar el resultado directo
+      if (editForm.city && !lat) {
+        const coords = await geocodeCity(editForm.city);
+        if (coords) { lat = coords.latitude; lng = coords.longitude; }
+      }
+
+      const payload = {
+        first_name: editForm.first_name,
+        last_name:  editForm.last_name,
+        bio:        editForm.bio,
+        city:       editForm.city,
+        ...(lat && lng ? { latitude: lat, longitude: lng } : {}),
+      };
+
+      await userApi.put(`/users/${user.id}`, payload);
       await dispatch(loadStoredUser());
       setEditVisible(false);
     } catch (err) {
@@ -258,346 +296,223 @@ const ProfileScreen = ({ navigation }) => {
   //   RENDER
   // ─────────────────────────────────────────
   return (
-    <View style={{ flex: 1, backgroundColor: C.surface }}>
+    <View style={{ flex: 1, backgroundColor: '#F5F0E8' }}>
       <ScrollView showsVerticalScrollIndicator={false}>
 
         {/* ══════════════════════════════════
-            SECCIÓN 1 — HEADER
+            HEADER — Eatwith style
         ══════════════════════════════════ */}
-        <View style={s.header}>
-          {/* Left: Avatar + badge */}
-          <View style={s.headerLeft}>
-            <View style={s.avatarBox}>
-              {profile.avatar_url ? (
-                // eslint-disable-next-line react-native/no-inline-styles
-                <img src={profile.avatar_url} style={{ width: 100, height: 100, borderRadius: 16, objectFit: 'cover' }} alt="avatar" />
+        <View style={s.headerCard}>
+          <View style={{ alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 56 : 36 }}>
+
+            {/* Avatar */}
+            <View style={{ position: 'relative' }}>
+              {profile.avatar_url && Platform.OS === 'web' ? (
+                <img
+                  src={profile.avatar_url}
+                  alt="avatar"
+                  style={{ width: 100, height: 100, borderRadius: 50, border: '3px solid #D4A853', objectFit: 'cover' }}
+                />
               ) : (
-                <View style={s.avatarFallback}>
+                <View style={s.avatarCircle}>
                   <Text style={s.avatarInitials}>{initials}</Text>
                 </View>
               )}
+              <View style={s.onlineDot} />
             </View>
+
+            {/* Name */}
+            <Text style={s.heroName}>{fullName}</Text>
+            <Text style={s.heroUsername}>@{user.username}</Text>
+
+            {/* Gourmet level badge */}
             <View style={s.gourmetBadge}>
+              <Text style={{ fontSize: 14, marginRight: 4 }}>⭐</Text>
               <Text style={s.gourmetText}>GOURMET NIVEL {gourmetLevel}</Text>
             </View>
-            {isHost && (
-              <View style={s.hostPill}>
-                <Icon name="restaurant" size={10} color={C.primary} />
-                <Text style={s.hostPillText}>HOST</Text>
-              </View>
-            )}
-          </View>
 
-          {/* Right: name + bio + buttons */}
-          <View style={s.headerRight}>
-            <Text style={s.headerName}>{fullName}</Text>
-            {user.username ? (
-              <Text style={s.headerUsername}>@{user.username}</Text>
-            ) : null}
+            {/* Bio */}
             {profile.bio ? (
-              <Text style={s.headerBio} numberOfLines={3}>{profile.bio}</Text>
+              <Text style={s.heroBio}>"{profile.bio}"</Text>
             ) : (
-              <Text style={s.headerBioEmpty}>Sin biografía aún</Text>
+              <TouchableOpacity onPress={() => setEditVisible(true)}>
+                <Text style={s.heroBioEmpty}>+ Añade una biografía</Text>
+              </TouchableOpacity>
             )}
-            {profile.city ? (
-              <View style={s.cityRow}>
-                <Icon name="location-outline" size={12} color="rgba(255,255,255,0.6)" />
-                <Text style={s.cityText}>{profile.city}</Text>
-              </View>
-            ) : null}
-            <View style={s.headerButtons}>
-              <TouchableOpacity style={s.btnEdit} onPress={() => setEditVisible(true)}>
-                <Text style={s.btnEditText}>Editar Perfil</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.btnShare}>
-                <Icon name="share-outline" size={14} color={C.white} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
 
-        {/* Stats strip */}
-        <View style={s.statsStrip}>
-          <View style={s.statCell}>
-            <Text style={s.statNum}>{attended}</Text>
-            <Text style={s.statLbl}>Cenas</Text>
-          </View>
-          <View style={s.statSep} />
-          <View style={s.statCell}>
-            <Text style={s.statNum}>{user.followers_count ?? 0}</Text>
-            <Text style={s.statLbl}>Seguidores</Text>
-          </View>
-          <View style={s.statSep} />
-          <View style={s.statCell}>
-            <Text style={s.statNum}>{user.following_count ?? 0}</Text>
-            <Text style={s.statLbl}>Siguiendo</Text>
-          </View>
-          {isHost && <>
-            <View style={s.statSep} />
-            <View style={s.statCell}>
-              <Text style={s.statNum}>{profile.total_dinners_hosted ?? 0}</Text>
-              <Text style={s.statLbl}>Organizadas</Text>
+            {/* Action buttons */}
+            <View style={s.heroButtons}>
+              <TouchableOpacity style={s.btnPrimary} onPress={() => setEditVisible(true)} activeOpacity={0.85}>
+                <Text style={s.btnPrimaryText}>Editar perfil</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.btnSecondary} activeOpacity={0.85}>
+                <Text style={s.btnSecondaryText}>Compartir</Text>
+              </TouchableOpacity>
             </View>
-          </>}
+          </View>
+
+          {/* Stats row — 3 columns Eatwith style */}
+          <View style={s.statsRow}>
+            {[
+              { label: 'Cenas',      value: attended },
+              { label: 'Seguidores', value: user.followers_count ?? 0 },
+              { label: 'Siguiendo',  value: user.following_count ?? 0 },
+            ].map((stat, i) => (
+              <View key={stat.label} style={[s.statCell, i < 2 && s.statCellBorder]}>
+                <Text style={s.statNum}>{stat.value}</Text>
+                <Text style={s.statLbl}>{stat.label}</Text>
+              </View>
+            ))}
+          </View>
         </View>
 
         {/* ══════════════════════════════════
-            SECCIÓN 2 — TRAYECTO GASTRONÓMICO
+            TABS
         ══════════════════════════════════ */}
-        <View style={s.section}>
-          <View style={s.sectionTitleRow}>
-            <Text style={s.sectionTitle}>Trayecto Gastronómico</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Inicio')}>
-              <Text style={s.sectionLink}>Ver todo →</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Main card + achievement badge row */}
-          <View style={s.trayectoRow}>
-            {/* Main card — próxima reserva */}
-            <LinearGradient
-              colors={['#2C3E2D', '#1a2e1b']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={s.nextCard}
+        <View style={s.tabBar}>
+          {['Próximas', 'Historial', 'Reseñas'].map(tab => (
+            <TouchableOpacity
+              key={tab}
+              onPress={() => setActiveTab(tab)}
+              style={[s.tabItem, activeTab === tab && s.tabItemActive]}
             >
-              <Text style={s.nextLabel}>PRÓXIMA RESERVA</Text>
-              {nextReservation ? (
-                <>
-                  <Text style={s.nextTitle} numberOfLines={2}>
-                    {nextReservation.confirmation_code
-                      ? `Reserva #${nextReservation.confirmation_code}`
-                      : 'Cena confirmada'}
-                  </Text>
-                  <Text style={s.nextMeta}>
-                    {nextReservation.party_size} {nextReservation.party_size === 1 ? 'invitado' : 'invitados'}
-                    {' · '}{nextReservation.status === 'confirmed' ? 'Confirmada' : 'Pendiente'}
-                  </Text>
-                  <View style={s.participantRow}>
-                    {[...Array(Math.min(nextReservation.party_size || 1, 4))].map((_, i) => (
-                      <View key={i} style={[s.participantDot, { marginLeft: i > 0 ? -8 : 0 }]}>
-                        <Text style={s.participantDotText}>{String.fromCharCode(65 + i)}</Text>
-                      </View>
+              <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* ══════════════════════════════════
+            TAB CONTENT
+        ══════════════════════════════════ */}
+        <View style={s.tabContent}>
+
+          {/* ── Próximas ── */}
+          {activeTab === 'Próximas' && (
+            upcomingReservations.length > 0
+              ? upcomingReservations.map(res => (
+                <TouchableOpacity
+                  key={res.id}
+                  style={s.reservationCard}
+                  onPress={() => navigation.navigate('EventDetail', { eventId: res.event_id })}
+                  activeOpacity={0.88}
+                >
+                  {Platform.OS === 'web' ? (
+                    <img src={getEventImg(res.event)} alt="" style={{ width: 72, height: 72, borderRadius: 12, marginRight: 12, objectFit: 'cover', flexShrink: 0 }} />
+                  ) : (
+                    <View style={s.resImgFallback}><Text style={{ fontSize: 22 }}>🍽️</Text></View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.resTitle} numberOfLines={2}>
+                      {res.event?.title || `Reserva #${res.confirmation_code}`}
+                    </Text>
+                    <Text style={s.resMeta}>
+                      📅 {fmtDate(res.event?.event_date || res.created_at)}{res.event?.city ? ` · ${res.event.city}` : ''}
+                    </Text>
+                    <View style={[s.resStatusBadge, { backgroundColor: res.status === 'confirmed' ? '#EAF3DE' : '#FFF8EC' }]}>
+                      <Text style={[s.resStatusText, { color: res.status === 'confirmed' ? '#3B6D11' : '#C9963A' }]}>
+                        {res.status === 'confirmed' ? '✓ CONFIRMADA' : '⏳ PENDIENTE'}
+                      </Text>
+                    </View>
+                  </View>
+                  {res.event?.price_per_person != null && (
+                    <Text style={s.resPrice}>€{parseFloat(res.event.price_per_person).toFixed(0)}</Text>
+                  )}
+                </TouchableOpacity>
+              ))
+              : (
+                <View style={s.emptyTab}>
+                  <Text style={{ fontSize: 40, marginBottom: 12 }}>🍽️</Text>
+                  <Text style={s.emptyTitle}>Sin cenas próximas</Text>
+                  <TouchableOpacity onPress={() => navigation.navigate('Inicio')}>
+                    <Text style={s.emptyLink}>Explorar experiencias →</Text>
+                  </TouchableOpacity>
+                </View>
+              )
+          )}
+
+          {/* ── Historial ── */}
+          {activeTab === 'Historial' && (
+            pastDinners.length > 0
+              ? pastDinners.map(res => (
+                <TouchableOpacity
+                  key={res.id}
+                  style={s.reservationCard}
+                  onPress={() => navigation.navigate('EventDetail', { eventId: res.event_id })}
+                  activeOpacity={0.88}
+                >
+                  {Platform.OS === 'web' ? (
+                    <img src={getEventImg(res.event)} alt="" style={{ width: 72, height: 72, borderRadius: 12, marginRight: 12, objectFit: 'cover', flexShrink: 0 }} />
+                  ) : (
+                    <View style={s.resImgFallback}><Text style={{ fontSize: 22 }}>🍽️</Text></View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.resTitle} numberOfLines={2}>
+                      {res.event?.title || `Reserva #${res.confirmation_code}`}
+                    </Text>
+                    <Text style={s.resMeta}>📅 {fmtDate(res.event?.event_date || res.created_at)}</Text>
+                    <View style={[s.resStatusBadge, { backgroundColor: '#F0F0F0' }]}>
+                      <Text style={[s.resStatusText, { color: '#7A7A6E' }]}>✓ COMPLETADA</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))
+              : (
+                <View style={s.emptyTab}>
+                  <Text style={{ fontSize: 40, marginBottom: 12 }}>📖</Text>
+                  <Text style={s.emptyTitle}>Sin historial aún</Text>
+                  <Text style={s.emptySubtitle}>Tus cenas completadas aparecerán aquí</Text>
+                </View>
+              )
+          )}
+
+          {/* ── Reseñas ── */}
+          {activeTab === 'Reseñas' && (
+            reviews.length > 0
+              ? reviews.map(review => (
+                <View key={review.id} style={s.reviewCard}>
+                  <View style={s.reviewTop}>
+                    <Text style={s.reviewEvent}>{review.event_name}</Text>
+                    <Text style={s.reviewAgo}>{weeksAgo(review.created_at)}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+                    {[1,2,3,4,5].map(star => (
+                      <Text key={star} style={{ fontSize: 14, color: star <= review.rating ? C.accent : '#E2D9C8' }}>★</Text>
                     ))}
                   </View>
-                  <TouchableOpacity style={s.prepareBtn}>
-                    <Text style={s.prepareBtnText}>PREPARAR INVITACIÓN</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <Text style={s.nextTitle}>Sin próximas cenas</Text>
-                  <Text style={s.nextMeta}>Explora eventos disponibles</Text>
-                  <TouchableOpacity style={s.prepareBtn} onPress={() => navigation.navigate('Inicio')}>
-                    <Text style={s.prepareBtnText}>EXPLORAR EVENTOS</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </LinearGradient>
-
-            {/* Achievement badge card */}
-            <View style={s.achieveCard}>
-              <Text style={{ fontSize: 28, marginBottom: 8 }}>
-                {gourmetLevel >= 5 ? '🏆' : gourmetLevel >= 3 ? '⭐' : '🍽️'}
-              </Text>
-              <Text style={s.achieveTitle}>
-                {gourmetLevel >= 5 ? 'Gourmet élite' : gourmetLevel >= 3 ? 'Comensal habitual' : 'Recién llegado'}
-              </Text>
-              <Text style={s.achieveSub}>
-                {attended === 0 ? 'Reserva tu primera cena' : `${attended} cena${attended > 1 ? 's' : ''} asistida${attended > 1 ? 's' : ''}`}
-              </Text>
-            </View>
-          </View>
-
-          {/* Past dinners horizontal scroll */}
-          {pastDinners.length > 0 && (
-            <>
-              <Text style={s.pastTitle}>Cenas pasadas</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pastScroll}>
-                {pastDinners.map((r, i) => (
-                  <LinearGradient
-                    key={r.id}
-                    colors={PAST_GRADIENTS[i % PAST_GRADIENTS.length]}
-                    style={s.pastCard}
-                  >
-                    <Text style={s.pastDate}>{fmtDate(r.created_at)}</Text>
-                    <Text style={s.pastName} numberOfLines={2}>
-                      {r.confirmation_code ? `#${r.confirmation_code}` : 'Cena completada'}
-                    </Text>
-                  </LinearGradient>
-                ))}
-              </ScrollView>
-            </>
+                  {review.comment && (
+                    <Text style={s.reviewText}>"{review.comment}"</Text>
+                  )}
+                </View>
+              ))
+              : (
+                <View style={s.emptyTab}>
+                  <Text style={{ fontSize: 40, marginBottom: 12 }}>⭐</Text>
+                  <Text style={s.emptyTitle}>Sin reseñas aún</Text>
+                  <Text style={s.emptySubtitle}>Las valoraciones de tus cenas aparecerán aquí</Text>
+                </View>
+              )
           )}
         </View>
 
         {/* ══════════════════════════════════
-            SECCIÓN 3 — DOS COLUMNAS
+            MENÚ — Eatwith clean style
         ══════════════════════════════════ */}
-        <View style={s.twoCol}>
-
-          {/* Left — Experiencias Guardadas */}
-          <View style={s.colLeft}>
-            <Text style={s.colTitle}>Experiencias{'\n'}Guardadas</Text>
-            {savedEvents.length === 0 ? (
-              <View style={s.emptyCol}>
-                <Icon name="bookmark-outline" size={28} color={C.muted} />
-                <Text style={s.emptyColText}>Sin favoritos{'\n'}aún</Text>
-              </View>
-            ) : (
-              savedEvents.map(ev => (
-                <TouchableOpacity
-                  key={ev.id}
-                  style={s.savedCard}
-                  onPress={() => navigation.navigate('EventDetail', { eventId: ev.id })}
-                >
-                  {Platform.OS === 'web' ? (
-                    // eslint-disable-next-line react-native/no-inline-styles
-                    <img
-                      src={getEventImg(ev)}
-                      alt={ev.title}
-                      style={{ width: 80, height: 80, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }}
-                    />
-                  ) : (
-                    <View style={s.savedImgFallback}>
-                      <Text style={{ fontSize: 28 }}>🍽️</Text>
-                    </View>
-                  )}
-                  <View style={s.savedInfo}>
-                    <Text style={s.savedName} numberOfLines={2}>{ev.title}</Text>
-                    <Text style={s.savedSub} numberOfLines={1}>
-                      {ev.cuisine_type?.[0] || ''}{ev.city ? ` · ${ev.city}` : ''}
-                    </Text>
-                    <View style={s.savedBottom}>
-                      <Stars rating={4} size={10} />
-                      <Text style={s.savedSpots}>
-                        {ev.max_guests ? `${ev.max_guests - (ev.confirmed_guests || 0)} plazas` : ''}
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-
-          {/* Right — Mis Reseñas */}
-          <View style={s.colRight}>
-            <Text style={s.colTitle}>Mis{'\n'}Reseñas</Text>
-            {reviews.length === 0 ? (
-              <View style={s.emptyCol}>
-                <Icon name="star-outline" size={28} color={C.muted} />
-                <Text style={s.emptyColText}>Sin reseñas{'\n'}aún</Text>
-              </View>
-            ) : (
-              reviews.map(r => (
-                <View key={r.id} style={s.reviewCard}>
-                  <View style={s.reviewTop}>
-                    <Text style={s.reviewRestaurant}>{r.event_title?.toUpperCase() || 'CENA'}</Text>
-                    <Text style={s.reviewAgo}>{weeksAgo(r.created_at)}</Text>
-                  </View>
-                  <Text style={s.reviewText}>"{r.comment}"</Text>
-                  <Stars rating={r.rating} size={12} />
-                </View>
-              ))
-            )}
-          </View>
-        </View>
-
-        {/* ══════════════════════════════════
-            SECCIÓN HOST — MIS CENAS
-        ══════════════════════════════════ */}
-        {isHost && (
-          <View style={s.section}>
-            <View style={s.sectionTitleRow}>
-              <Text style={s.sectionTitle}>Mis cenas publicadas</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('CreateEvent')}>
-                <Text style={s.sectionLink}>+ Crear →</Text>
-              </TouchableOpacity>
-            </View>
-            {hostEvents.length === 0 ? (
-              <View style={{ alignItems: 'center', paddingVertical: 20, gap: 10 }}>
-                <Icon name="restaurant-outline" size={32} color={C.muted} />
-                <Text style={{ fontFamily: SANS, fontSize: 14, color: C.muted, textAlign: 'center' }}>
-                  Aún no has publicado ninguna cena.{'\n'}¡Crea tu primera experiencia!
-                </Text>
-                <TouchableOpacity
-                  style={{ backgroundColor: C.primary, borderRadius: 20, paddingHorizontal: 20, paddingVertical: 10 }}
-                  onPress={() => navigation.navigate('CreateEvent')}
-                >
-                  <Text style={{ fontFamily: SANS, color: C.accent, fontWeight: '700', fontSize: 13 }}>Crear cena</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              hostEvents.map(ev => (
-                <TouchableOpacity
-                  key={ev.id}
-                  style={s.hostEventCard}
-                  onPress={() => navigation.navigate('EventDetail', { eventId: ev.id })}
-                >
-                  {Platform.OS === 'web' ? (
-                    <img
-                      src={getEventImg(ev)}
-                      alt={ev.title}
-                      style={{ width: 64, height: 64, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }}
-                    />
-                  ) : (
-                    <View style={{ width: 64, height: 64, borderRadius: 10, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ fontSize: 24 }}>🍽️</Text>
-                    </View>
-                  )}
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontFamily: SANS, fontSize: 14, fontWeight: '700', color: C.text }} numberOfLines={1}>{ev.title}</Text>
-                    <Text style={{ fontFamily: SANS, fontSize: 12, color: C.muted, marginTop: 2 }}>
-                      {fmtDate(ev.event_date)}  ·  {ev.city}
-                    </Text>
-                    <Text style={{ fontFamily: SANS, fontSize: 12, color: C.muted }}>
-                      {ev.confirmed_guests}/{ev.max_guests} plazas  ·  {ev.status}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                    <Text style={{ fontFamily: SANS, fontSize: 14, fontWeight: '700', color: C.accent }}>
-                      €{parseFloat(ev.price_per_person || 0).toFixed(0)}
-                    </Text>
-                    <View style={{ backgroundColor: ev.status === 'published' ? '#E8F5E9' : '#F5F5F5', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
-                      <Text style={{ fontFamily: SANS, fontSize: 10, fontWeight: '700', color: ev.status === 'published' ? '#2E7D32' : C.muted }}>
-                        {ev.status === 'published' ? 'ACTIVA' : ev.status.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-        )}
-
-        {/* ══════════════════════════════════
-            OPCIONES ADICIONALES
-        ══════════════════════════════════ */}
-        <View style={s.optionsSection}>
+        <View style={{ marginTop: 8, backgroundColor: C.white }}>
           {[
-            { icon: 'settings-outline',       label: 'Ajustes',          onPress: () => setSettingsVisible(true) },
-            { icon: 'help-circle-outline',    label: 'Ayuda y soporte',  onPress: () => setHelpVisible(true) },
-            ...(!isHost ? [{ icon: 'restaurant-outline', label: 'Convertirme en Host', onPress: () => navigation.navigate('CreateEvent'), accent: true }] : []),
-            { icon: 'log-out-outline',        label: 'Cerrar sesión',    onPress: handleLogout, danger: true },
+            ...(!isHost ? [{ icon: '🏠', label: 'Convertirme en Host', color: C.primary, onPress: () => setBecomeHostVisible(true) }] : []),
+            { icon: '⚙️', label: 'Configuración', onPress: () => setSettingsVisible(true) },
+            { icon: '❓', label: 'Ayuda y soporte', onPress: () => setHelpVisible(true) },
+            { icon: '🚪', label: 'Cerrar sesión', color: '#E8593C', onPress: handleLogout },
           ].map((item, i, arr) => (
             <TouchableOpacity
               key={item.label}
-              style={[s.optionRow, i === arr.length - 1 && { borderBottomWidth: 0 }]}
               onPress={item.onPress}
+              style={[s.menuRow, i < arr.length - 1 && s.menuRowBorder]}
+              activeOpacity={0.7}
             >
-              <Icon
-                name={item.icon}
-                size={20}
-                color={item.danger ? '#C0392B' : item.accent ? C.primary : C.muted}
-              />
-              <Text style={[
-                s.optionLabel,
-                item.danger && { color: '#C0392B' },
-                item.accent && { color: C.primary, fontWeight: '600' },
-              ]}>
-                {item.label}
-              </Text>
-              <Icon name="chevron-forward" size={16} color={C.border} />
+              <Text style={s.menuIcon}>{item.icon}</Text>
+              <Text style={[s.menuLabel, item.color && { color: item.color }]}>{item.label}</Text>
+              <Text style={s.menuArrow}>›</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -613,7 +528,23 @@ const ProfileScreen = ({ navigation }) => {
           <ModalField label="Nombre"   value={editForm.first_name} onChangeText={v => setEditForm(f => ({ ...f, first_name: v }))} placeholder="Tu nombre" />
           <ModalField label="Apellido" value={editForm.last_name}  onChangeText={v => setEditForm(f => ({ ...f, last_name:  v }))} placeholder="Tu apellido" />
           <ModalField label="Bio"      value={editForm.bio}        onChangeText={v => setEditForm(f => ({ ...f, bio:        v }))} placeholder="Cuéntanos algo sobre ti..." multiline />
-          <ModalField label="Ciudad"   value={editForm.city}       onChangeText={v => setEditForm(f => ({ ...f, city:       v }))} placeholder="Ej: Madrid" />
+          <View style={ms.fieldGroup}>
+            <Text style={ms.fieldLabel}>Ciudad</Text>
+            <TextInput
+              style={ms.fieldInput}
+              value={editForm.city}
+              onChangeText={v => setEditForm(f => ({ ...f, city: v }))}
+              onBlur={() => geocodeCity(editForm.city)}
+              placeholder="Ej: Madrid"
+              placeholderTextColor={C.muted}
+            />
+            {geocoding && <Text style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>📍 Obteniendo coordenadas...</Text>}
+            {!geocoding && editForm.latitude && (
+              <Text style={{ fontSize: 12, color: C.accent, marginTop: 4 }}>
+                📍 {editForm.latitude.toFixed(4)}, {editForm.longitude.toFixed(4)}
+              </Text>
+            )}
+          </View>
           <TouchableOpacity style={[ms.btn, isSaving && ms.btnOff]} onPress={handleSaveProfile} disabled={isSaving}>
             {isSaving ? <ActivityIndicator color={C.accent} /> : <Text style={ms.btnText}>Guardar cambios</Text>}
           </TouchableOpacity>
@@ -719,26 +650,18 @@ const ProfileScreen = ({ navigation }) => {
 //   STYLES — MAIN SCREEN
 // ═══════════════════════════════════════════
 const s = StyleSheet.create({
-  // ── Header ──
-  header: {
-    backgroundColor: C.primary,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingTop: Platform.OS === 'ios' ? 56 : 36,
+  // ── Header card ──
+  headerCard: {
+    backgroundColor: '#FFFFFF',
     paddingBottom: 0,
-    paddingHorizontal: 20,
-    gap: 16,
   },
-  headerLeft: { alignItems: 'center', gap: 8 },
-  avatarBox: {
-    width: 100, height: 100,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: C.accent,
-  },
-  avatarFallback: {
-    width: 100, height: 100,
-    backgroundColor: C.accent,
+  avatarCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: '#D4A853',
+    backgroundColor: 'rgba(212,168,83,0.15)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -746,402 +669,313 @@ const s = StyleSheet.create({
     fontFamily: SERIF,
     fontSize: 36,
     fontWeight: '600',
-    color: C.primary,
+    color: '#D4A853',
   },
-  gourmetBadge: {
-    backgroundColor: C.accent,
-    borderRadius: 20,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
+  onlineDot: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#4CAF50',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
-  gourmetText: {
-    fontFamily: SANS,
-    fontSize: 9,
-    fontWeight: '700',
-    color: C.text,
-    letterSpacing: 1,
-  },
-  hostPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 20,
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-  },
-  hostPillText: {
-    fontFamily: SANS,
-    fontSize: 9,
-    fontWeight: '700',
-    color: C.accent,
-    letterSpacing: 1,
-  },
-
-  headerRight: { flex: 1, paddingTop: 4, paddingBottom: 20, gap: 6 },
-  headerName: {
+  heroName: {
     fontFamily: SERIF,
     fontSize: 26,
     fontWeight: '600',
-    color: C.white,
-    lineHeight: 30,
+    color: '#1C1C1C',
+    marginTop: 12,
+    textAlign: 'center',
   },
-  headerUsername: {
+  heroUsername: {
     fontFamily: SANS,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.55)',
+    fontSize: 14,
+    color: '#7A7A6E',
+    marginTop: 2,
   },
-  headerBio: {
-    fontFamily: SANS,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-    lineHeight: 19,
+  gourmetBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF8EC',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#F0C97A',
   },
-  headerBioEmpty: {
+  gourmetText: {
     fontFamily: SANS,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.35)',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#C9963A',
+    letterSpacing: 0.5,
+  },
+  heroBio: {
+    fontFamily: SANS,
+    fontSize: 14,
+    color: '#7A7A6E',
+    textAlign: 'center',
+    marginTop: 12,
+    paddingHorizontal: 32,
+    lineHeight: 20,
     fontStyle: 'italic',
   },
-  cityRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  cityText: { fontFamily: SANS, fontSize: 12, color: 'rgba(255,255,255,0.55)' },
-  headerButtons: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  btnEdit: {
-    backgroundColor: C.accent,
-    borderRadius: 20,
-    paddingVertical: 7,
-    paddingHorizontal: 16,
-  },
-  btnEditText: {
+  heroBioEmpty: {
     fontFamily: SANS,
     fontSize: 13,
-    fontWeight: '600',
-    color: C.text,
+    color: '#B0A898',
+    fontStyle: 'italic',
+    marginTop: 10,
   },
-  btnShare: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  heroButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  btnPrimary: {
+    backgroundColor: '#2C3E2D',
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  btnPrimaryText: {
+    fontFamily: SANS,
+    color: '#D4A853',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  btnSecondary: {
+    borderWidth: 1.5,
+    borderColor: '#E2D9C8',
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  btnSecondaryText: {
+    fontFamily: SANS,
+    color: '#2C3E2D',
+    fontWeight: '600',
+    fontSize: 13,
   },
 
-  // ── Stats strip ──
-  statsStrip: {
-    backgroundColor: C.primary,
+  // ── Stats row ──
+  statsRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#F0EBE0',
+    marginTop: 24,
   },
-  statCell: { flex: 1, alignItems: 'center' },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  statCellBorder: {
+    borderRightWidth: 1,
+    borderRightColor: '#F0EBE0',
+  },
   statNum: {
     fontFamily: SERIF,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '600',
-    color: C.white,
+    color: '#1C1C1C',
   },
   statLbl: {
     fontFamily: SANS,
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.55)',
-    marginTop: 1,
+    fontSize: 12,
+    color: '#7A7A6E',
+    marginTop: 2,
   },
-  statSep: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'center' },
 
-  // ── Section common ──
-  section: { padding: 20, paddingBottom: 0 },
-  sectionTitleRow: {
+  // ── Tabs ──
+  tabBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBE0',
+    backgroundColor: '#FFFFFF',
+    marginTop: 8,
   },
-  sectionTitle: {
-    fontFamily: SERIF,
-    fontSize: 20,
-    fontWeight: '600',
-    color: C.text,
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
-  sectionLink: {
+  tabItemActive: {
+    borderBottomColor: '#2C3E2D',
+  },
+  tabText: {
     fontFamily: SANS,
     fontSize: 13,
-    color: C.accent,
-    fontWeight: '600',
+    fontWeight: '400',
+    color: '#7A7A6E',
+  },
+  tabTextActive: {
+    fontWeight: '700',
+    color: '#2C3E2D',
   },
 
-  // ── Trayecto row ──
-  trayectoRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  nextCard: {
-    flex: 0.60,
-    borderRadius: 16,
-    padding: 18,
-    minHeight: 180,
-    justifyContent: 'space-between',
-  },
-  nextLabel: {
-    fontFamily: SANS,
-    fontSize: 10,
-    fontWeight: '700',
-    color: C.accent,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  nextTitle: {
-    fontFamily: SERIF,
-    fontSize: 20,
-    fontWeight: '600',
-    color: C.white,
-    lineHeight: 24,
-    flex: 1,
-  },
-  nextMeta: {
-    fontFamily: SANS,
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 6,
-    marginBottom: 10,
-  },
-  participantRow: { flexDirection: 'row', marginBottom: 12 },
-  participantDot: {
-    width: 28, height: 28,
-    borderRadius: 14,
-    backgroundColor: C.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: C.primary,
-  },
-  participantDotText: {
-    fontFamily: SANS,
-    fontSize: 11,
-    fontWeight: '700',
-    color: C.primary,
-  },
-  prepareBtn: {
-    borderWidth: 1,
-    borderColor: C.accent,
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    alignSelf: 'flex-start',
-  },
-  prepareBtnText: {
-    fontFamily: SANS,
-    fontSize: 10,
-    fontWeight: '700',
-    color: C.accent,
-    letterSpacing: 1,
-  },
-
-  // Achievement card
-  achieveCard: {
-    flex: 0.40,
-    backgroundColor: C.white,
-    borderRadius: 16,
+  // ── Tab content ──
+  tabContent: {
     padding: 16,
-    justifyContent: 'center',
+    minHeight: 200,
+  },
+
+  // ── Reservation card ──
+  reservationCard: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
   },
-  achieveTitle: {
-    fontFamily: SERIF,
-    fontSize: 15,
-    fontWeight: '600',
-    color: C.primary,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  achieveSub: {
-    fontFamily: SANS,
-    fontSize: 11,
-    color: C.muted,
-    textAlign: 'center',
-  },
-
-  // Past dinners
-  pastTitle: {
-    fontFamily: SANS,
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.muted,
-    marginBottom: 10,
-    letterSpacing: 0.5,
-  },
-  pastScroll: { marginBottom: 20 },
-  pastCard: {
-    width: 120,
-    height: 80,
-    borderRadius: 12,
-    padding: 12,
-    marginRight: 10,
-    justifyContent: 'space-between',
-  },
-  pastDate: {
-    fontFamily: SANS,
-    fontSize: 10,
-    color: C.accent,
-    fontWeight: '600',
-  },
-  pastName: {
-    fontFamily: SANS,
-    fontSize: 12,
-    color: C.white,
-    fontWeight: '600',
-  },
-
-  // ── Two columns ──
-  twoCol: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    gap: 16,
-    alignItems: 'flex-start',
-  },
-  colLeft:  { flex: 0.55 },
-  colRight: { flex: 0.45 },
-  colTitle: {
-    fontFamily: SERIF,
-    fontSize: 18,
-    fontWeight: '600',
-    color: C.text,
-    marginBottom: 12,
-    lineHeight: 22,
-  },
-  emptyCol: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    gap: 8,
-  },
-  emptyColText: {
-    fontFamily: SANS,
-    fontSize: 12,
-    color: C.muted,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-
-  // Saved cards
-  savedCard: {
-    flexDirection: 'row',
-    backgroundColor: C.white,
-    borderRadius: 16,
-    padding: 10,
-    marginBottom: 10,
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  savedImgFallback: {
-    width: 80, height: 80,
+  resImgFallback: {
+    width: 72,
+    height: 72,
     borderRadius: 12,
     backgroundColor: '#F5EDD8',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
     flexShrink: 0,
   },
-  savedInfo: { flex: 1, justifyContent: 'space-between' },
-  savedName: {
-    fontFamily: SANS,
-    fontSize: 14,
+  resTitle: {
+    fontFamily: SERIF,
+    fontSize: 16,
     fontWeight: '600',
-    color: C.text,
-    lineHeight: 18,
+    color: '#1C1C1C',
+    lineHeight: 20,
   },
-  savedSub: {
+  resMeta: {
     fontFamily: SANS,
     fontSize: 12,
-    color: C.muted,
+    color: '#7A7A6E',
+    marginTop: 3,
   },
-  savedBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  savedSpots: { fontFamily: SANS, fontSize: 11, color: C.muted },
-
-  // Review cards
-  reviewCard: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    paddingBottom: 14,
-    marginBottom: 14,
-    gap: 6,
+  resStatusBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  reviewTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  reviewRestaurant: {
+  resStatusText: {
     fontFamily: SANS,
     fontSize: 10,
     fontWeight: '700',
-    color: C.text,
+  },
+  resPrice: {
+    fontFamily: SERIF,
+    fontSize: 16,
+    color: '#D4A853',
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+
+  // ── Empty tab state ──
+  emptyTab: {
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptyTitle: {
+    fontFamily: SERIF,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1C1C1C',
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontFamily: SANS,
+    fontSize: 13,
+    color: '#7A7A6E',
+    textAlign: 'center',
+  },
+  emptyLink: {
+    fontFamily: SANS,
+    fontSize: 14,
+    color: '#D4A853',
+    fontWeight: '600',
+    marginTop: 8,
+  },
+
+  // ── Review card ──
+  reviewCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  reviewTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  reviewEvent: {
+    fontFamily: SANS,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2C3E2D',
     letterSpacing: 1,
+    textTransform: 'uppercase',
     flex: 1,
   },
   reviewAgo: {
     fontFamily: SANS,
-    fontSize: 10,
-    color: C.muted,
+    fontSize: 11,
+    color: '#B0A898',
   },
   reviewText: {
-    fontFamily: SERIF,
-    fontSize: 13,
-    color: C.text,
+    fontFamily: SANS,
+    fontSize: 14,
+    color: '#1C1C1C',
     fontStyle: 'italic',
-    lineHeight: 18,
+    lineHeight: 20,
   },
 
-  // ── Host event card ──
-  hostEventCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: C.white,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 10,
-  },
-
-  // ── Options section ──
-  optionsSection: {
-    marginHorizontal: 20,
-    marginTop: 28,
-    backgroundColor: C.white,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  optionRow: {
+  // ── Menu ──
+  menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    gap: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#FFFFFF',
   },
-  optionLabel: {
+  menuRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F0E8',
+  },
+  menuIcon: {
+    fontSize: 18,
+    marginRight: 14,
+  },
+  menuLabel: {
     fontFamily: SANS,
-    fontSize: 15,
-    color: C.text,
     flex: 1,
+    fontSize: 15,
+    color: '#1C1C1C',
+    fontWeight: '500',
+  },
+  menuArrow: {
+    color: '#B0A898',
+    fontSize: 20,
+    lineHeight: 22,
   },
 });
 

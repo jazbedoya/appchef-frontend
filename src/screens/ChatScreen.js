@@ -80,12 +80,25 @@ const ROOM_EMOJIS = {
   default: '🍽️',
 };
 
-const getRoomEmoji = (roomName) => {
+const CUISINE_EMOJIS = {
+  Italiana: '🍝', Japonesa: '🍣', Vegana: '🥗', Española: '🥘',
+};
+
+const getRoomEmoji = (roomName, cuisineType) => {
+  if (cuisineType) {
+    let types = cuisineType;
+    if (typeof cuisineType === 'string') {
+      try { types = JSON.parse(cuisineType); } catch (_) { types = [cuisineType]; }
+    }
+    if (!Array.isArray(types)) types = [types];
+    for (const t of types) {
+      if (CUISINE_EMOJIS[t]) return CUISINE_EMOJIS[t];
+    }
+  }
   if (!roomName) return ROOM_EMOJIS.default;
   const lower = roomName.toLowerCase();
-  return Object.keys(ROOM_EMOJIS).find(k => lower.includes(k))
-    ? ROOM_EMOJIS[Object.keys(ROOM_EMOJIS).find(k => lower.includes(k))]
-    : ROOM_EMOJIS.default;
+  const match = Object.keys(ROOM_EMOJIS).find(k => lower.includes(k));
+  return match ? ROOM_EMOJIS[match] : ROOM_EMOJIS.default;
 };
 
 // ─── Conversation List Item ───
@@ -99,7 +112,8 @@ const ConversationItem = ({ conversation, onPress }) => {
     return `${Math.floor(hours / 24)}d`;
   };
 
-  const emoji = getRoomEmoji(conversation.room_name);
+  const emoji = getRoomEmoji(conversation.room_name, conversation.cuisine_type);
+  const unreadCount = conversation.unread_count || 0;
 
   return (
     <TouchableOpacity
@@ -117,14 +131,15 @@ const ConversationItem = ({ conversation, onPress }) => {
         </View>
         <View style={styles.convBottomRow}>
           <Text
-            style={[styles.convLastMsg, conversation.unread_count > 0 && styles.convLastMsgBold]}
+            style={[styles.convLastMsg, unreadCount > 0 && styles.convLastMsgBold]}
             numberOfLines={1}
           >
             {conversation.last_message}
           </Text>
-          {conversation.unread_count > 0 && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadCount}>{conversation.unread_count}</Text>
+          {unreadCount > 0 && (
+            <View style={{ backgroundColor: '#D4A853', borderRadius: 10,
+                           width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>{unreadCount}</Text>
             </View>
           )}
         </View>
@@ -330,9 +345,7 @@ const ChatScreen = ({ route }) => {
       setIsConnected(false);
     };
 
-    ws.onclose = () => {
-      setIsConnected(false);
-    };
+    ws.onclose = () => setTimeout(() => connectToRoom(conversation), 3000);
 
     socketRef.current = ws;
   }, [user, WS_URL]);
@@ -429,10 +442,6 @@ const ChatScreen = ({ route }) => {
         {/* Header */}
         <View style={styles.listHeader}>
           <Text style={styles.listHeaderTitle}>Messages</Text>
-          <View style={styles.connectionDot}>
-            <View style={[styles.connectionIndicator, isConnected && styles.connectionIndicatorOnline]} />
-            <Text style={styles.connectionText}>{isConnected ? 'Connected' : 'Offline'}</Text>
-          </View>
         </View>
 
         {conversations === null ? (

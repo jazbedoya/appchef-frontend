@@ -2,6 +2,7 @@
   "expo": {
     "name": "App Chef",
     "slug": "app-chef",
+    "scheme": "appchef",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -19,15 +20,28 @@
         "backgroundColor": "#4A2C2A"
       },
       "package": "com.appchef.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET"
+      ],
       "config": {
         "googleMaps": {
-          "apiKey": "TU_API_KEY_AQUI"
+          "apiKey": "AIzaSyB9X-ML0-qrdfZbDqUtrMsy927PmBQFV8g"
         }
       }
     },
     "web": {
       "favicon": "./assets/icon.png",
       "bundler": "metro"
-    }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "App Chef necesita tu ubicación para mostrar cenas y personas cercanas."
+        }
+      ]
+    ]
   }
 }

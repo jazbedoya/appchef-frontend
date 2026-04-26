@@ -10,6 +10,9 @@ export const loginUser = createAsyncThunk(
       const result = await authService.login({ email, password });
       return result;
     } catch (error) {
+      if (error.code === 'email_not_verified') {
+        return rejectWithValue({ code: 'email_not_verified', email: error.email });
+      }
       return rejectWithValue(error.userMessage || 'Login failed');
     }
   },
@@ -27,6 +30,30 @@ export const registerUser = createAsyncThunk(
         ? detail.map(e => e.message).join(', ')
         : (typeof detail === 'string' ? detail : error.userMessage || 'Error al registrarse');
       return rejectWithValue(msg);
+    }
+  },
+);
+
+export const loginWithGoogle = createAsyncThunk(
+  'auth/loginWithGoogle',
+  async (idToken, { rejectWithValue }) => {
+    try {
+      return await authService.googleSignIn(idToken);
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : (error.userMessage || 'Error con Google');
+      return rejectWithValue(msg);
+    }
+  },
+);
+
+export const resendVerificationEmail = createAsyncThunk(
+  'auth/resendVerification',
+  async (email, { rejectWithValue }) => {
+    try {
+      return await authService.resendVerification(email);
+    } catch (error) {
+      return rejectWithValue(error.userMessage || 'Error al reenviar correo');
     }
   },
 );
@@ -89,6 +116,7 @@ const authSlice = createSlice({
     isLoading: false,
     isInitializing: false,
     error: null,
+    pendingVerificationEmail: null,
   },
   reducers: {
     clearError: state => {
@@ -103,6 +131,10 @@ const authSlice = createSlice({
       state.isAuthenticated = false;
       state.isLoading = false;
       state.error = null;
+      state.pendingVerificationEmail = null;
+    },
+    clearPendingVerification: state => {
+      state.pendingVerificationEmail = null;
     },
   },
   extraReducers: builder => {
@@ -120,8 +152,13 @@ const authSlice = createSlice({
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = action.payload;
         state.isAuthenticated = false;
+        if (action.payload?.code === 'email_not_verified') {
+          state.pendingVerificationEmail = action.payload.email;
+          state.error = null;
+        } else {
+          state.error = action.payload;
+        }
       });
 
     // Register
@@ -132,8 +169,7 @@ const authSlice = createSlice({
       })
       .addCase(registerUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload.user;
-        state.isAuthenticated = true;
+        state.pendingVerificationEmail = action.payload.pendingVerificationEmail;
         state.error = null;
       })
       .addCase(registerUser.rejected, (state, action) => {
@@ -147,6 +183,24 @@ const authSlice = createSlice({
         state.user = null;
         state.isAuthenticated = false;
         state.error = null;
+      });
+
+    // Login with Google
+    builder
+      .addCase(loginWithGoogle.pending, state => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(loginWithGoogle.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.user = action.payload.user;
+        state.isAuthenticated = true;
+        state.error = null;
+        state.pendingVerificationEmail = null;
+      })
+      .addCase(loginWithGoogle.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
       });
 
     // Load stored user (app startup)
@@ -172,13 +226,14 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError, setUser, resetAuth } = authSlice.actions;
+export const { clearError, setUser, resetAuth, clearPendingVerification } = authSlice.actions;
 
 // ─── Selectors ───
 export const selectUser = state => state.auth.user;
 export const selectIsAuthenticated = state => state.auth.isAuthenticated;
 export const selectAuthLoading = state => state.auth.isLoading;
 export const selectAuthError = state => state.auth.error;
+export const selectPendingVerificationEmail = state => state.auth.pendingVerificationEmail;
 export const selectIsInitializing = state => state.auth.isInitializing;
 export const selectIsHost = state => state.auth.user?.profile?.is_host || state.auth.user?.role === 'host';
 

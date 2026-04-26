@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons as Icon } from '@expo/vector-icons';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
 import * as Location from 'expo-location';
 
 import { fetchNearbyEvents, selectNearbyEvents, selectEventsLoading } from '../store/eventsSlice';
@@ -137,9 +137,12 @@ const MapScreen = ({ navigation }) => {
   const [usersLoading, setUsersLoading] = useState(false);
   const [followStates, setFollowStates] = useState({}); // { userId: bool }
   const [followLoading, setFollowLoading] = useState({}); // { userId: bool }
+  // Región inicial: Málaga (donde están los datos de prueba)
+  const DEFAULT_LAT = 36.7213;
+  const DEFAULT_LNG = -4.4213;
   const [region, setRegion] = useState({
-    latitude: 40.7128,
-    longitude: -74.0060,
+    latitude: DEFAULT_LAT,
+    longitude: DEFAULT_LNG,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
@@ -148,12 +151,12 @@ const MapScreen = ({ navigation }) => {
   const [userLocation, setUserLocation] = useState(null);
   const panelAnim = useRef(new Animated.Value(BOTTOM_PANEL_HEIGHT)).current;
 
-  // ─── Load nearby events ───
+  // ─── Carga inicial de eventos (siempre con Málaga) ───
   useEffect(() => {
-    dispatch(fetchNearbyEvents({ lat: region.latitude, lng: region.longitude, radiusKm: 20 }));
+    dispatch(fetchNearbyEvents({ lat: DEFAULT_LAT, lng: DEFAULT_LNG, radiusKm: 20 }));
   }, [dispatch]);
 
-  // ─── Geolocation ───
+  // ─── Geolocation: actualiza región pero NO sobreescribe el fetch ───
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -165,8 +168,8 @@ const MapScreen = ({ navigation }) => {
           latitudeDelta: 0.0922,
           longitudeDelta: 0.0421,
         };
-        setRegion(coords);
         setUserLocation(coords);
+        // Solo recentra el mapa, no re-busca (el botón "Buscar en esta zona" hace eso)
       }
     })();
   }, []);
@@ -325,6 +328,12 @@ const MapScreen = ({ navigation }) => {
         showsMyLocationButton={false}
         customMapStyle={mapStyle}
       >
+        {/* OpenStreetMap tiles — no requiere API key */}
+        <UrlTile
+          urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maximumZ={19}
+          flipY={false}
+        />
         {/* Event markers */}
         {mode === 'events' && filteredEvents.map(event =>
           event.latitude && event.longitude ? (

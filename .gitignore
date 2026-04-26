@@ -10,6 +10,10 @@ yarn-error.*
 dist/
 web-build/
 
+# Native generated dirs (Expo prebuild) — regenerable, not tracked
+android/
+ios/
+
 # Variables de entorno
 .env
 .env.local
