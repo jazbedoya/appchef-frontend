@@ -6,21 +6,40 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 
 import {
-  loginUser, registerUser, resendVerificationEmail, loginWithGoogle,
+  loginUser, registerUser, resendVerificationEmail, completeOAuthLogin,
   selectAuthLoading, selectAuthError, selectPendingVerificationEmail,
   clearError, clearPendingVerification,
 } from '../store/authSlice';
 import { colors } from '../theme/colors';
 import { spacing, borderRadius } from '../theme/spacing';
-import {
-  GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID,
-} from '../services/api';
+import { USER_SERVICE_URL } from '../services/api';
 
 WebBrowser.maybeCompleteAuthSession();
+
+// Where the OAuth callback redirects us when it's done. expo-linking's createURL
+// resolves to the right thing per runtime:
+//   - Web:        http://localhost:8081/auth
+//   - Expo Go:    exp://172.19.140.145:8081/--/auth
+//   - Dev/prod:   appchef://auth   (scheme from app.json)
+const OAUTH_RETURN_URL = Linking.createURL('auth');
+
+const GOOGLE_OAUTH_START_URL =
+  `${USER_SERVICE_URL}/auth/google/start?return_to=${encodeURIComponent(OAUTH_RETURN_URL)}`;
+
+const parseQueryParams = (url) => {
+  const queryStart = url.indexOf('?');
+  if (queryStart === -1) return {};
+  const out = {};
+  url.slice(queryStart + 1).split('&').forEach(part => {
+    const [k, v = ''] = part.split('=');
+    if (k) out[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' '));
+  });
+  return out;
+};
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -59,30 +78,64 @@ const AuthScreen = () => {
   const [mode, setMode] = useState('login');
   const [showPassword, setShowPassword] = useState(false);
   const [resendFeedback, setResendFeedback] = useState(null);
+  const [googleError, setGoogleError] = useState(null);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
-  // Expo Go cannot register a custom URL scheme, so Google's Web Client
-  // (which requires http(s) redirects) must go through Expo's auth proxy.
-  // Replace this with a native deep-link URI when shipping a dev/production build.
-  const [googleRequest, googleResponse, promptGoogle] = Google.useAuthRequest({
-    webClientId: GOOGLE_WEB_CLIENT_ID,
-    iosClientId: GOOGLE_IOS_CLIENT_ID,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-    redirectUri: 'https://auth.expo.io/@anonymous/app-chef',
-  });
-
+  // On web: when the OAuth callback redirects us back to this origin with tokens
+  // in the URL query, capture them and clean the address bar.
   useEffect(() => {
-    if (googleRequest) {
-      console.log('🔵 Google OAuth redirect URI:', googleRequest.redirectUri);
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const params = parseQueryParams(window.location.href);
+    if (params.access_token && params.refresh_token) {
+      dispatch(completeOAuthLogin({
+        accessToken: params.access_token,
+        refreshToken: params.refresh_token,
+      }));
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (params.error) {
+      setGoogleError(`Google: ${params.error}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [googleRequest]);
+  }, [dispatch]);
 
-  useEffect(() => {
-    if (googleResponse?.type === 'success') {
-      const idToken = googleResponse.params?.id_token
-        || googleResponse.authentication?.idToken;
-      if (idToken) dispatch(loginWithGoogle(idToken));
+  const handleGoogleSignIn = async () => {
+    setGoogleError(null);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      // Same-window redirect; we'll pick up tokens on return via the useEffect above.
+      window.location.href = GOOGLE_OAUTH_START_URL;
+      return;
     }
-  }, [googleResponse, dispatch]);
+
+    setGoogleBusy(true);
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(
+        GOOGLE_OAUTH_START_URL,
+        OAUTH_RETURN_URL,
+      );
+      if (result.type !== 'success' || !result.url) {
+        if (result.type === 'cancel' || result.type === 'dismiss') return;
+        setGoogleError('No se pudo completar el inicio de sesión.');
+        return;
+      }
+
+      const queryParams = parseQueryParams(result.url);
+      if (queryParams.error) {
+        setGoogleError(`Google: ${queryParams.error}`);
+        return;
+      }
+      const accessToken = queryParams.access_token;
+      const refreshToken = queryParams.refresh_token;
+      if (!accessToken || !refreshToken) {
+        setGoogleError('Faltaron tokens en la respuesta del servidor.');
+        return;
+      }
+      dispatch(completeOAuthLogin({ accessToken, refreshToken }));
+    } catch (err) {
+      setGoogleError(err?.message || 'Error inesperado con Google');
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -228,13 +281,23 @@ const AuthScreen = () => {
 
           {/* Google Sign-In */}
           <TouchableOpacity
-            style={[styles.googleButton, (!googleRequest || isLoading) && styles.submitButtonDisabled]}
-            onPress={() => promptGoogle()}
-            disabled={!googleRequest || isLoading}
+            style={[styles.googleButton, (googleBusy || isLoading) && styles.submitButtonDisabled]}
+            onPress={handleGoogleSignIn}
+            disabled={googleBusy || isLoading}
           >
-            <Icon name="logo-google" size={18} color="#2C3E2D" style={{ marginRight: spacing.sm }} />
-            <Text style={styles.googleButtonText}>Continuar con Google</Text>
+            {googleBusy
+              ? <ActivityIndicator size="small" color="#2C3E2D" />
+              : (
+                <>
+                  <Icon name="logo-google" size={18} color="#2C3E2D" style={{ marginRight: spacing.sm }} />
+                  <Text style={styles.googleButtonText}>Continuar con Google</Text>
+                </>
+              )
+            }
           </TouchableOpacity>
+          {googleError && (
+            <Text style={styles.errorText}>{googleError}</Text>
+          )}
 
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />

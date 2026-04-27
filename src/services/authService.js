@@ -51,6 +51,12 @@ const authService = {
     return { user, tokens: response.data };
   },
 
+  async completeOAuthLogin({ accessToken, refreshToken }) {
+    await authService.persistTokens(accessToken, refreshToken);
+    const user = await authService.getCurrentUser();
+    return { user };
+  },
+
   async logout() {
     try {
       const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);

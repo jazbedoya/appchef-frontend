@@ -47,6 +47,17 @@ export const loginWithGoogle = createAsyncThunk(
   },
 );
 
+export const completeOAuthLogin = createAsyncThunk(
+  'auth/completeOAuthLogin',
+  async ({ accessToken, refreshToken }, { rejectWithValue }) => {
+    try {
+      return await authService.completeOAuthLogin({ accessToken, refreshToken });
+    } catch (error) {
+      return rejectWithValue(error.userMessage || 'No pudimos iniciar sesión con Google');
+    }
+  },
+);
+
 export const resendVerificationEmail = createAsyncThunk(
   'auth/resendVerification',
   async (email, { rejectWithValue }) => {
@@ -199,6 +210,24 @@ const authSlice = createSlice({
         state.pendingVerificationEmail = null;
       })
       .addCase(loginWithGoogle.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      });
+
+    // Complete OAuth (server-mediated callback returned tokens via deep link)
+    builder
+      .addCase(completeOAuthLogin.pending, state => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(completeOAuthLogin.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.user = action.payload.user;
+        state.isAuthenticated = true;
+        state.error = null;
+        state.pendingVerificationEmail = null;
+      })
+      .addCase(completeOAuthLogin.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
       });
