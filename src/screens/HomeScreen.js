@@ -115,14 +115,6 @@ const GRID_CARDS = [
     action: (nav, close) => { close(); nav.navigate('Inicio'); },
   },
   {
-    id: 'map',
-    title: 'Explorar mapa',
-    subtitle: 'Cenas cerca de ti',
-    image: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=400&q=80',
-    isNew: false,
-    action: (nav, close) => { close(); nav.navigate('Map'); },
-  },
-  {
     id: 'people',
     title: 'Personas cercanas',
     subtitle: 'Foodies cerca de ti',
@@ -137,24 +129,6 @@ const GRID_CARDS = [
     image: 'https://images.unsplash.com/photo-1551218808-94e220e084d2?w=400&q=80',
     isNew: false,
     action: (nav, close) => { close(); nav.navigate('CreateEvent'); },
-  },
-  {
-    id: 'chat',
-    title: 'Mis chats',
-    subtitle: 'Grupos de tus cenas',
-    image: 'https://images.unsplash.com/photo-1577563908411-5077b6dc7624?w=400&q=80',
-    isNew: false,
-    bgColor: '#2C3E2D',
-    action: (nav, close) => { close(); nav.navigate('Chat'); },
-  },
-  {
-    id: 'profile',
-    title: 'Mi perfil gourmet',
-    subtitle: 'Reservas y valoraciones',
-    image: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&q=80',
-    isNew: false,
-    bgColor: '#1C2B1D',
-    action: (nav, close) => { close(); nav.navigate('Profile'); },
   },
 ];
 
@@ -254,6 +228,31 @@ const PlansModal = ({ visible, onClose, navigation }) => {
       </Animated.View>
     </View>
   </Modal>
+  );
+};
+
+// ─── Stagger entrance for event cards ───
+const AnimatedCardWrapper = ({ index, children }) => {
+  const fade = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(fade, {
+      toValue: 1,
+      duration: 420,
+      delay: Math.min(index, 6) * 70,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+  return (
+    <Animated.View
+      style={{
+        opacity: fade,
+        transform: [{
+          translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }),
+        }],
+      }}
+    >
+      {children}
+    </Animated.View>
   );
 };
 
@@ -364,7 +363,7 @@ const HomeScreen = ({ navigation }) => {
         <Text style={s.headline}>{'Experiencias\ngastronómicas únicas'}</Text>
 
         {/* Search bar */}
-        <TouchableOpacity style={s.searchWrapper} activeOpacity={0.85} onPress={() => {}}>
+        <View style={s.searchWrapper}>
           <Text style={s.searchIcon}>🔍</Text>
           <TextInput
             style={s.searchInput}
@@ -376,13 +375,19 @@ const HomeScreen = ({ navigation }) => {
             returnKeyType="search"
             autoCapitalize="none"
             autoCorrect={false}
+            accessibilityLabel="Buscar ciudad o cocina"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="Limpiar búsqueda"
+              accessibilityRole="button"
+            >
               <Icon name="close-circle" size={18} color={C.muted} />
             </TouchableOpacity>
           )}
-        </TouchableOpacity>
+        </View>
 
         {userLocation && (
           <View style={s.locationRow}>
@@ -401,15 +406,22 @@ const HomeScreen = ({ navigation }) => {
         {CUISINE_FILTERS.map(f => {
           const active = selectedCuisine === f.id;
           return (
-            <TouchableOpacity
+            <Pressable
               key={f.id}
-              style={[s.filterPill, active && s.filterPillActive]}
               onPress={() => setSelectedCuisine(f.id)}
-              activeOpacity={0.75}
+              android_ripple={{ color: 'rgba(212,168,83,0.22)', borderless: false }}
+              accessibilityRole="button"
+              accessibilityLabel={`Filtrar por cocina ${f.label}`}
+              accessibilityState={{ selected: active }}
+              style={({ pressed }) => [
+                s.filterPill,
+                active && s.filterPillActive,
+                { transform: [{ scale: pressed ? 0.95 : 1 }] },
+              ]}
             >
               <Text style={s.filterEmoji}>{f.emoji}</Text>
               <Text style={[s.filterText, active && s.filterTextActive]}>{f.label}</Text>
-            </TouchableOpacity>
+            </Pressable>
           );
         })}
       </ScrollView>
@@ -433,13 +445,14 @@ const HomeScreen = ({ navigation }) => {
       <FlatList
         data={events}
         keyExtractor={item => String(item.id)}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const distance = getDistanceText(item);
           const spots    = item.available_spots ?? ((item.max_guests || 8) - (item.confirmed_guests || 0));
           const cuisine  = Array.isArray(item.cuisine_type) ? item.cuisine_type[0] : item.cuisine_type;
           const price    = parseFloat(item.price_per_person || 0).toFixed(0);
 
           return (
+            <AnimatedCardWrapper index={index}>
             <TouchableOpacity
               style={s.card}
               onPress={() => navigation.navigate('EventDetail', { eventId: item.id, eventTitle: item.title })}
@@ -544,6 +557,7 @@ const HomeScreen = ({ navigation }) => {
                 )}
               </View>
             </TouchableOpacity>
+            </AnimatedCardWrapper>
           );
         }}
         ListHeaderComponent={ListHeader}
@@ -551,12 +565,25 @@ const HomeScreen = ({ navigation }) => {
         contentContainerStyle={s.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} colors={[C.primary]} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={C.accent}
+            colors={[C.accent, C.primary]}
+            title="Sirviendo nuevas mesas..."
+            titleColor={C.muted}
+          />
         }
       />
 
       {/* FAB crear evento */}
-      <TouchableOpacity style={s.fab} onPress={() => navigation.navigate('CreateEvent')} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={s.fab}
+        onPress={() => navigation.navigate('CreateEvent')}
+        activeOpacity={0.85}
+        accessibilityLabel="Crear nueva cena"
+        accessibilityRole="button"
+      >
         <Icon name="add" size={28} color='#2C3E2D' />
       </TouchableOpacity>
 
@@ -707,13 +734,13 @@ const s = StyleSheet.create({
   // ── Eatwith-style EventCard ──
   card: {
     marginHorizontal: 20,
-    marginBottom: 24,
-    borderRadius: 20,
+    marginBottom: 20,
+    borderRadius: 24,
     backgroundColor: C.white,
     overflow: 'hidden',
     ...(Platform.OS === 'web'
-      ? { boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }
-      : { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 4 }),
+      ? { boxShadow: '0 8px 28px rgba(44,62,45,0.12), 0 2px 6px rgba(44,62,45,0.06)' }
+      : { shadowColor: '#2C3E2D', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.14, shadowRadius: 20, elevation: 6 }),
   },
   cardImgWrapper: {
     position: 'relative',
@@ -733,26 +760,29 @@ const s = StyleSheet.create({
     position: 'absolute',
     top: 14,
     right: 14,
-    backgroundColor: C.white,
-    borderRadius: 20,
-    paddingHorizontal: 12,
+    backgroundColor: C.accent,
+    borderRadius: 14,
+    paddingHorizontal: 11,
     paddingVertical: 6,
-    alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 3,
     ...(Platform.OS === 'web'
-      ? { boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }
-      : { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4 }),
+      ? { boxShadow: '0 2px 10px rgba(44,62,45,0.18)' }
+      : { shadowColor: '#2C3E2D', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 }),
   },
   priceBadgeAmount: {
     fontFamily: SANS,
-    fontWeight: '700',
-    fontSize: 14,
-    color: C.text,
+    fontWeight: '800',
+    fontSize: 15,
+    color: C.primary,
   },
   priceBadgePer: {
     fontFamily: SANS,
     fontSize: 10,
-    color: C.muted,
-    textAlign: 'center',
+    fontWeight: '600',
+    color: C.primary,
+    opacity: 0.75,
   },
   urgencyBadge: {
     position: 'absolute',
