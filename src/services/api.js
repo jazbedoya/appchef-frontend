@@ -7,7 +7,7 @@ import { Platform } from 'react-native';
 const HOST = Platform.OS === 'android' ? '172.19.140.145' : 'localhost';
 
 export const USER_SERVICE_URL = `http://${HOST}:8001`;
-export const RESERVATION_SERVICE_URL = `http://${HOST}:8002`;
+export const RESERVATION_SERVICE_URL = `http://${HOST}:8003`;
 export const CHAT_SERVICE_URL = `http://${HOST}:8004`;
 
 const createInstance = (baseURL) => {
