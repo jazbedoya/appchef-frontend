@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Dimensions, Alert, Switch, Platform, Image,
   Modal, TextInput, Linking, ActivityIndicator, KeyboardAvoidingView,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/core';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { selectUser, selectIsHost, logoutUser, loadStoredUser } from '../store/authSlice';
+import { selectUser, selectIsHost, logoutUser, loadStoredUser, setUser } from '../store/authSlice';
 import { fetchUserReservations, selectMyReservations, fetchEvents, selectEvents } from '../store/eventsSlice';
 import { userApi } from '../services/api';
 import { colors } from '../theme/colors';
@@ -151,6 +152,16 @@ const ProfileScreen = ({ navigation }) => {
       dispatch(fetchEvents());
     }
   }, [dispatch, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      userApi.get('/users/me')
+        .then(res => { if (!cancelled) dispatch(setUser(res.data)); })
+        .catch(() => {});
+      return () => { cancelled = true; };
+    }, [dispatch]),
+  );
 
   useEffect(() => {
     if (!isHost) return;
@@ -356,13 +367,21 @@ const ProfileScreen = ({ navigation }) => {
             {[
               { label: 'Cenas',      value: attended },
               { label: 'Seguidores', value: user.followers_count ?? 0 },
-              { label: 'Siguiendo',  value: user.following_count ?? 0 },
-            ].map((stat, i) => (
-              <View key={stat.label} style={[s.statCell, i < 2 && s.statCellBorder]}>
-                <Text style={s.statNum}>{stat.value}</Text>
-                <Text style={s.statLbl}>{stat.label}</Text>
-              </View>
-            ))}
+              { label: 'Siguiendo',  value: user.following_count ?? 0, onPress: () => navigation.navigate('Following') },
+            ].map((stat, i) => {
+              const Cell = stat.onPress ? TouchableOpacity : View;
+              return (
+                <Cell
+                  key={stat.label}
+                  style={[s.statCell, i < 2 && s.statCellBorder]}
+                  onPress={stat.onPress}
+                  activeOpacity={stat.onPress ? 0.7 : 1}
+                >
+                  <Text style={s.statNum}>{stat.value}</Text>
+                  <Text style={s.statLbl}>{stat.label}</Text>
+                </Cell>
+              );
+            })}
           </View>
         </View>
 

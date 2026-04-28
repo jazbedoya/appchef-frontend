@@ -20,6 +20,7 @@ import AuthScreen from '../screens/AuthScreen';
 import CreateEventScreen from '../screens/CreateEventScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import HostBookingsScreen from '../screens/HostBookingsScreen';
+import FollowingScreen from '../screens/FollowingScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -97,6 +98,20 @@ const ProfileStack = () => (
         headerStyle: { backgroundColor: colors.beige },
         headerTitleStyle: { color: colors.cafe, fontWeight: '700' },
       }}
+    />
+    <Stack.Screen
+      name="Following"
+      component={FollowingScreen}
+      options={{
+        title: 'Siguiendo',
+        headerStyle: { backgroundColor: colors.beige },
+        headerTitleStyle: { color: colors.cafe, fontWeight: '700' },
+      }}
+    />
+    <Stack.Screen
+      name="UserProfile"
+      component={UserProfileScreen}
+      options={{ headerShown: false }}
     />
   </Stack.Navigator>
 );
