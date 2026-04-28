@@ -1,13 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useFocusEffect } from '@react-navigation/core';
+import { useFocusEffect, useNavigation } from '@react-navigation/core';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Image,
+  LayoutAnimation, UIManager,
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 import { selectUser } from '../store/authSlice';
 import UserAvatar from '../components/UserAvatar';
@@ -114,32 +119,34 @@ const ConversationItem = ({ conversation, onPress }) => {
 
   const emoji = getRoomEmoji(conversation.room_name, conversation.cuisine_type);
   const unreadCount = conversation.unread_count || 0;
+  const hasUnread = unreadCount > 0;
 
   return (
     <TouchableOpacity
-      style={styles.convItem}
+      style={[styles.convItem, hasUnread && styles.convItemUnread]}
       onPress={() => onPress(conversation)}
       activeOpacity={0.85}
     >
-      <View style={styles.convEmojiAvatar}>
+      <View style={[styles.convEmojiAvatar, hasUnread && styles.convEmojiAvatarUnread]}>
         <Text style={styles.convEmojiText}>{emoji}</Text>
       </View>
       <View style={styles.convContent}>
         <View style={styles.convTopRow}>
           <Text style={styles.convName} numberOfLines={1}>{conversation.room_name}</Text>
-          <Text style={styles.convTime}>{timeAgo(conversation.last_message_time)}</Text>
+          <Text style={[styles.convTime, hasUnread && styles.convTimeUnread]}>
+            {timeAgo(conversation.last_message_time)}
+          </Text>
         </View>
         <View style={styles.convBottomRow}>
           <Text
-            style={[styles.convLastMsg, unreadCount > 0 && styles.convLastMsgBold]}
+            style={[styles.convLastMsg, hasUnread && styles.convLastMsgBold]}
             numberOfLines={1}
           >
             {conversation.last_message}
           </Text>
-          {unreadCount > 0 && (
-            <View style={{ backgroundColor: '#D4A853', borderRadius: 10,
-                           width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>{unreadCount}</Text>
+          {hasUnread && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadCount}>{unreadCount}</Text>
             </View>
           )}
         </View>
@@ -149,7 +156,7 @@ const ConversationItem = ({ conversation, onPress }) => {
 };
 
 // ─── Individual Message Bubble ───
-const MessageBubble = ({ message, isOwn, isHost }) => {
+const MessageBubble = ({ message, isOwn, isHost, onProfilePress }) => {
   const formattedTime = new Date(message.created_at).toLocaleTimeString('en-US', {
     hour: '2-digit', minute: '2-digit',
   });
@@ -158,10 +165,20 @@ const MessageBubble = ({ message, isOwn, isHost }) => {
   if (message.type === 'system' || !message.sender_id) {
     return (
       <View style={styles.systemMessageWrapper}>
-        <Text style={styles.systemMessage}>{message.content}</Text>
+        <View style={styles.systemMessageLine} />
+        <View style={styles.systemMessagePill}>
+          <Text style={styles.systemMessage}>{message.content}</Text>
+        </View>
+        <View style={styles.systemMessageLine} />
       </View>
     );
   }
+
+  const handleProfilePress = () => {
+    if (!isOwn && onProfilePress && message.sender_id) {
+      onProfilePress(message.sender_id);
+    }
+  };
 
   return (
     <View style={[
@@ -169,14 +186,20 @@ const MessageBubble = ({ message, isOwn, isHost }) => {
       isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther,
     ]}>
       {!isOwn && (
-        <UserAvatar name={message.sender_name} size={28} style={styles.messageAvatar} />
+        <TouchableOpacity onPress={handleProfilePress} activeOpacity={0.7}>
+          <UserAvatar name={message.sender_name} size={28} style={styles.messageAvatar} />
+        </TouchableOpacity>
       )}
       <View style={styles.messageBubbleInner}>
         {!isOwn && isHost && (
-          <Text style={styles.hostTag}>👨‍🍳 Chef</Text>
+          <TouchableOpacity onPress={handleProfilePress} activeOpacity={0.7}>
+            <Text style={styles.hostTag}>👨‍🍳 Chef · {message.sender_name}</Text>
+          </TouchableOpacity>
         )}
         {!isOwn && !isHost && (
-          <Text style={styles.messageSenderName}>{message.sender_name}</Text>
+          <TouchableOpacity onPress={handleProfilePress} activeOpacity={0.7}>
+            <Text style={styles.messageSenderName}>{message.sender_name}</Text>
+          </TouchableOpacity>
         )}
         {isOwn ? (
           <LinearGradient
@@ -222,6 +245,7 @@ const MessageBubble = ({ message, isOwn, isHost }) => {
 
 // ─── Main Chat Screen ───
 const ChatScreen = ({ route }) => {
+  const navigation = useNavigation();
   const user = useSelector(selectUser);
   const [conversations, setConversations] = useState(null); // null = loading
   const [activeConversation, setActiveConversation] = useState(null);
@@ -229,12 +253,33 @@ const ChatScreen = ({ route }) => {
   const [inputText, setInputText] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [roomMembers, setRoomMembers] = useState([]);
 
-  const [showParticipants, setShowParticipants] = useState(true);
+  const [showParticipants, setShowParticipants] = useState(false);
+  const toggleParticipants = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowParticipants(v => !v);
+  }, []);
 
   const socketRef = useRef(null);
   const flatListRef = useRef(null);
   const myTokenPrefix = useRef(null);
+
+  const loadRoomMembers = useCallback(async (roomId) => {
+    if (!roomId) return;
+    try {
+      const res = await chatApi.get(`/rooms/${roomId}/members`);
+      setRoomMembers(Array.isArray(res.data) ? res.data : []);
+    } catch (_) {
+      setRoomMembers([]);
+    }
+  }, []);
+
+  const openUserProfile = useCallback((userId) => {
+    if (!userId) return;
+    navigation.navigate('UserProfile', { userId });
+  }, [navigation]);
 
   // Load rooms from API — refresh every time the screen is focused
   const loadRooms = useCallback(() => {
@@ -316,24 +361,26 @@ const ChatScreen = ({ route }) => {
         const data = msg.data || {};
 
         if (msg.type === 'message') {
-          setMessages(prev => [...prev, {
-            id: data.id || `ws_${Date.now()}_${Math.random()}`,
+          const incoming = {
+            id: data.id || `ws_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
             sender_id: data.sender_id || 'other',
             sender_name: data.sender_name || 'Usuario',
             content: data.content || '',
             created_at: data.created_at || new Date().toISOString(),
             is_read: false,
-          }]);
+          };
+          setMessages(prev => prev.some(m => m.id === incoming.id) ? prev : [...prev, incoming]);
           setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
         } else if (msg.type === 'system') {
-          setMessages(prev => [...prev, {
-            id: data.id || `sys_${Date.now()}`,
+          const incoming = {
+            id: data.id || `sys_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
             sender_id: null,
             sender_name: 'Sistema',
             content: data.content || '',
             created_at: data.created_at || new Date().toISOString(),
             type: 'system',
-          }]);
+          };
+          setMessages(prev => prev.some(m => m.id === incoming.id) ? prev : [...prev, incoming]);
         }
       } catch (err) {
         console.warn('WS message parse error:', err);
@@ -345,7 +392,9 @@ const ChatScreen = ({ route }) => {
       setIsConnected(false);
     };
 
-    ws.onclose = () => setTimeout(() => connectToRoom(conversation), 3000);
+    ws.onclose = () => setTimeout(() => {
+      connectToRoom(conversation).catch(() => {});
+    }, 3000);
 
     socketRef.current = ws;
   }, [user, WS_URL]);
@@ -381,6 +430,9 @@ const ChatScreen = ({ route }) => {
     const existing = MOCK_MESSAGES[conversation.id] || [];
     setMessages(existing);
 
+    // Load real members from chat-service in parallel with history
+    loadRoomMembers(conversation.id);
+
     // Await history before connecting WS — avoids race condition
     // where WS system messages arrive before history and get wiped
     await loadHistory(conversation.id);
@@ -388,7 +440,7 @@ const ChatScreen = ({ route }) => {
 
     // Connect WebSocket for live messages (appends on top of history)
     connectToRoom(conversation);
-  }, [connectToRoom, loadHistory]);
+  }, [connectToRoom, loadHistory, loadRoomMembers]);
 
   // Auto-open room when screen is focused with openRoomId param (from EventDetailScreen)
   const autoOpenedRef = useRef(null);
@@ -491,27 +543,39 @@ const ChatScreen = ({ route }) => {
             }
             setIsConnected(false);
             setActiveConversation(null);
+            setRoomMembers([]);
           }}
           style={styles.backButton}
         >
           <Icon name="arrow-back" size={22} color={colors.cafe} />
         </TouchableOpacity>
+        <View style={styles.chatHeaderAvatarWrap}>
+          <Text style={styles.chatHeaderAvatarEmoji}>
+            {getRoomEmoji(activeConversation.room_name, activeConversation.cuisine_type)}
+          </Text>
+        </View>
         <TouchableOpacity
           style={styles.chatHeaderInfo}
-          onPress={() => setShowParticipants(v => !v)}
+          onPress={toggleParticipants}
           activeOpacity={0.7}
         >
           <Text style={styles.chatHeaderTitle} numberOfLines={1}>
             {activeConversation.room_name}
           </Text>
           <View style={styles.chatHeaderSubRow}>
+            <View
+              style={[
+                styles.connectionIndicator,
+                isConnected && styles.connectionIndicatorOnline,
+              ]}
+            />
             <Text style={styles.chatHeaderSub}>
-              {activeConversation.participants.length} participantes
+              {(roomMembers.length || activeConversation.participants.length || 0)} participantes
             </Text>
             <Icon
               name={showParticipants ? 'chevron-up' : 'chevron-down'}
-              size={14}
-              color={colors.gray400}
+              size={16}
+              color={colors.cafe}
               style={{ marginLeft: 4 }}
             />
           </View>
@@ -522,44 +586,65 @@ const ChatScreen = ({ route }) => {
       </View>
 
       {/* Participants Panel */}
-      {showParticipants && (
-        <View style={styles.participantsPanel}>
-          <Text style={styles.participantsLabel}>PARTICIPANTES</Text>
-          {activeConversation.participants.map((p, i) => {
-            const initials = p.name.slice(0, 1).toUpperCase();
-            const distanceText = p.distance_km == null
-              ? 'Aquí mismo'
-              : `A ${p.distance_km} km`;
-            return (
-              <View key={p.id} style={[
-                styles.participantRow,
-                i < activeConversation.participants.length - 1 && styles.participantRowBorder,
-              ]}>
-                {/* Avatar */}
-                <View style={[styles.participantAvatar, p.is_host && styles.participantAvatarHost]}>
-                  <Text style={[styles.participantInitial, p.is_host && styles.participantInitialHost]}>
-                    {initials}
-                  </Text>
-                </View>
-                {/* Info */}
-                <View style={styles.participantInfo}>
-                  <View style={styles.participantNameRow}>
-                    <Text style={styles.participantName}>{p.name}</Text>
-                    {p.is_host && (
-                      <View style={styles.chefBadge}>
-                        <Text style={styles.chefBadgeText}>CHEF</Text>
-                      </View>
-                    )}
+      {showParticipants && (() => {
+        const displayMembers = roomMembers.length > 0
+          ? roomMembers.map(m => ({
+              id: m.user_id,
+              name: m.user_name || 'Usuario',
+              is_host: (m.role || '').toUpperCase() === 'HOST',
+              role: (m.role || '').toUpperCase() === 'HOST' ? 'Anfitrión' : 'Invitado',
+              distance_km: null,
+            }))
+          : activeConversation.participants;
+        return (
+          <View style={styles.participantsPanel}>
+            <Text style={styles.participantsLabel}>PARTICIPANTES</Text>
+            {displayMembers.map((p, i) => {
+              const initials = (p.name || '?').slice(0, 1).toUpperCase();
+              const distanceText = p.distance_km == null
+                ? 'Toca para ver perfil'
+                : `A ${p.distance_km} km`;
+              const isMe = p.id === user?.id;
+              return (
+                <TouchableOpacity
+                  key={p.id || `p_${i}`}
+                  style={[
+                    styles.participantRow,
+                    i < displayMembers.length - 1 && styles.participantRowBorder,
+                  ]}
+                  onPress={() => !isMe && openUserProfile(p.id)}
+                  activeOpacity={isMe ? 1 : 0.7}
+                  disabled={isMe}
+                >
+                  <View style={[styles.participantAvatar, p.is_host && styles.participantAvatarHost]}>
+                    <Text style={[styles.participantInitial, p.is_host && styles.participantInitialHost]}>
+                      {initials}
+                    </Text>
                   </View>
-                  <Text style={styles.participantMeta}>
-                    {p.role} · {distanceText}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      )}
+                  <View style={styles.participantInfo}>
+                    <View style={styles.participantNameRow}>
+                      <Text style={styles.participantName}>
+                        {p.name}{isMe ? ' (tú)' : ''}
+                      </Text>
+                      {p.is_host && (
+                        <View style={styles.chefBadge}>
+                          <Text style={styles.chefBadgeText}>CHEF</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.participantMeta}>
+                      {p.role} · {isMe ? 'Esto es tu cuenta' : distanceText}
+                    </Text>
+                  </View>
+                  {!isMe && (
+                    <Icon name="chevron-forward" size={18} color={colors.gray400} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        );
+      })()}
 
       {/* Messages */}
       {isLoadingMessages ? (
@@ -580,6 +665,7 @@ const ChatScreen = ({ route }) => {
                 (myTokenPrefix.current != null && item.sender_id === myTokenPrefix.current)
               }
               isHost={item.sender_id === activeConversation.participants[0]?.id}
+              onProfilePress={openUserProfile}
             />
           )}
           contentContainerStyle={styles.messagesList}
@@ -594,14 +680,16 @@ const ChatScreen = ({ route }) => {
           <Icon name="attach-outline" size={22} color={colors.gray500} />
         </TouchableOpacity>
         <TextInput
-          style={styles.messageInput}
+          style={[styles.messageInput, isInputFocused && styles.messageInputFocused]}
           value={inputText}
           onChangeText={setInputText}
-          placeholder="Type a message..."
+          placeholder="Escribe un mensaje..."
           placeholderTextColor={colors.gray400}
           multiline
           maxLength={1000}
           returnKeyType="send"
+          onFocus={() => setIsInputFocused(true)}
+          onBlur={() => setIsInputFocused(false)}
           onSubmitEditing={sendMessage}
           onKeyPress={(e) => {
             if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
@@ -614,10 +702,19 @@ const ChatScreen = ({ route }) => {
           style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
           onPress={sendMessage}
           disabled={!inputText.trim()}
+          activeOpacity={0.85}
         >
+          {inputText.trim() ? (
+            <LinearGradient
+              colors={['#D4A853', '#C9963A']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+          ) : null}
           <Icon
             name="send"
-            size={18}
+            size={20}
             color={inputText.trim() ? colors.white : colors.gray400}
           />
         </TouchableOpacity>
@@ -652,36 +749,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    padding: 14,
-    borderRadius: 16,
+    paddingHorizontal: spacing.base,
+    paddingVertical: 14,
     backgroundColor: colors.white,
-    marginHorizontal: spacing.base,
-    marginBottom: 10,
-    shadowColor: '#2C3E2D',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray100,
+  },
+  convItemUnread: {
+    backgroundColor: '#FDFAF5',
+    borderLeftWidth: 3,
+    borderLeftColor: '#D4A853',
+    paddingLeft: spacing.base - 3,
   },
   convEmojiAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#F5EDD8',
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
+  },
+  convEmojiAvatarUnread: {
+    borderWidth: 2,
+    borderColor: '#D4A853',
   },
   convEmojiText: {
     fontSize: 24,
   },
   convContent: { flex: 1 },
   convTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
-  convName: { ...typography.labelLarge, color: colors.gray800, flex: 1, marginRight: spacing.sm },
-  convTime: { ...typography.caption, color: colors.gray500 },
+  convName: { ...typography.labelLarge, color: '#2C3E2D', flex: 1, marginRight: spacing.sm, fontWeight: '600' },
+  convTime: { ...typography.caption, color: colors.gray400 },
+  convTimeUnread: { color: '#C9963A', fontWeight: '600' },
   convBottomRow: { flexDirection: 'row', alignItems: 'center' },
-  convLastMsg: { ...typography.body, color: colors.gray500, flex: 1 },
-  convLastMsgBold: { fontWeight: '600', color: colors.gray700 },
+  convLastMsg: { ...typography.body, color: colors.gray500, flex: 1, fontSize: 14 },
+  convLastMsgBold: { fontWeight: '600', color: '#2C3E2D' },
   unreadBadge: {
     backgroundColor: '#D4A853',
     borderRadius: 10,
@@ -711,9 +814,20 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   backButton: { padding: 4, marginRight: spacing.sm },
+  chatHeaderAvatarWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F5EDD8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.sm,
+    flexShrink: 0,
+  },
+  chatHeaderAvatarEmoji: { fontSize: 20 },
   chatHeaderInfo: { flex: 1 },
   chatHeaderTitle: { ...typography.h3, color: colors.cafe },
-  chatHeaderSubRow: { flexDirection: 'row', alignItems: 'center' },
+  chatHeaderSubRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   chatHeaderSub: { ...typography.caption, color: colors.gray500 },
   chatHeaderMenu: { padding: 4 },
 
@@ -817,13 +931,27 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   systemMessageWrapper: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 8,
+    gap: 10,
+    marginVertical: 10,
+    paddingHorizontal: spacing.base,
+  },
+  systemMessageLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.gray100,
+  },
+  systemMessagePill: {
+    backgroundColor: '#EDE8DF',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
   },
   systemMessage: {
-    fontSize: 12,
-    color: '#B0A898',
-    fontStyle: 'italic',
+    fontSize: 11,
+    color: '#2C3E2D',
+    fontWeight: '500',
   },
   hostTag: {
     fontSize: 11,
@@ -863,14 +991,18 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     maxHeight: 100,
   },
+  messageInputFocused: {
+    borderColor: '#D4A853',
+  },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#2C3E2D',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 2,
+    overflow: 'hidden',
   },
   sendButtonDisabled: { backgroundColor: colors.gray200 },
 });

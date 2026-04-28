@@ -366,6 +366,18 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         </View>
 
+        {isHost && (
+          <TouchableOpacity
+            style={s.hostBookingsBtn}
+            onPress={() => navigation.navigate('HostBookings')}
+            activeOpacity={0.85}
+          >
+            <Icon name="calendar-outline" size={18} color={colors.white} style={{ marginRight: 8 }} />
+            <Text style={s.hostBookingsBtnText}>Reservas recibidas</Text>
+            <Icon name="chevron-forward" size={18} color={colors.white} style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
+        )}
+
         {/* ══════════════════════════════════
             TABS
         ══════════════════════════════════ */}
@@ -790,6 +802,23 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: '#7A7A6E',
     marginTop: 2,
+  },
+
+  hostBookingsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2C3E2D',
+    marginHorizontal: 16,
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  hostBookingsBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+    letterSpacing: 0.3,
   },
 
   // ── Tabs ──

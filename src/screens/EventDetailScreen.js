@@ -178,11 +178,16 @@ const EventDetailScreen = ({ route, navigation }) => {
               partySize,
             }));
             if (createReservation.fulfilled.match(result)) {
-              const code = result.payload?.confirmation_code || result.payload?.id || '';
+              const code = result.payload?.confirmation_code;
+              try {
+                const { chatApi } = await import('../services/api');
+                const res = await chatApi.get(`/rooms/event/${event.id}`);
+                setChatRoomId(res.data.id);
+              } catch (_) {}
               Alert.alert(
                 '¡Reserva confirmada!',
-                code ? `Código de confirmación: ${code}` : 'Tu reserva ha sido confirmada.',
-                [{ text: 'Perfecto', onPress: () => navigation.goBack() }],
+                'La cena ya se encuentra en tu perfil.' + (code ? `\n\nCódigo: ${code}` : ''),
+                [{ text: 'Perfecto' }],
               );
             } else {
               Alert.alert('Error', result.payload || 'No se pudo completar la reserva. Inténtalo de nuevo.');
