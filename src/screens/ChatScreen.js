@@ -392,9 +392,17 @@ const ChatScreen = ({ route }) => {
       setIsConnected(false);
     };
 
-    ws.onclose = () => setTimeout(() => {
-      connectToRoom(conversation).catch(() => {});
-    }, 3000);
+    ws.onclose = () => {
+      // Only auto-reconnect if THIS socket is still the active one. If the
+      // user switched rooms or left the chat, socketRef.current points
+      // somewhere else (or null) — don't fight that close.
+      if (socketRef.current !== ws) return;
+      setIsConnected(false);
+      setTimeout(() => {
+        if (socketRef.current !== ws) return; // re-check after the wait
+        connectToRoom(conversation).catch(() => {});
+      }, 3000);
+    };
 
     socketRef.current = ws;
   }, [user, WS_URL]);
