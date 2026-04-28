@@ -10,19 +10,26 @@ import {
   StatusBar,
   RefreshControl,
   Platform,
+  Image,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 
 import {
   fetchEvents,
+  fetchUserReservations,
   selectEvents,
   selectEventsLoading,
   selectEventsError,
+  selectMyReservations,
 } from '../store/eventsSlice';
 import { selectUser } from '../store/authSlice';
 import { getDistanceKm, formatDistance } from '../utils/geo';
 import SkeletonCard from '../components/SkeletonCard';
+
+const LOCATION_STORAGE_KEY = '@appchef:userLocation';
 
 // ─── Web font injection ───
 if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getElementById('gourmet-fonts')) {
@@ -103,12 +110,58 @@ const EmptyState = ({ onClear }) => (
   </View>
 );
 
+// ─── Next Dinner Banner ───
+const NEXT_DINNER_DATE_FMT = { weekday: 'short', day: 'numeric', month: 'short' };
+const NEXT_DINNER_TIME_FMT = { hour: '2-digit', minute: '2-digit' };
+
+const formatNextDinnerDate = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const date = d.toLocaleDateString('es-ES', NEXT_DINNER_DATE_FMT).replace('.', '');
+  const time = d.toLocaleTimeString('es-ES', NEXT_DINNER_TIME_FMT);
+  return `${date} · ${time}`;
+};
+
+const NextDinnerBanner = ({ reservation, event, onPress }) => {
+  const title = event?.title || 'Tu reserva';
+  const dateLine = formatNextDinnerDate(event?.event_date);
+  const host = event?.host_name;
+  const isPending = reservation.status === 'pending';
+  const image = event && getEventImage(event);
+
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={s.nextDinnerWrap}>
+      <Text style={s.nextDinnerLabel}>TU PRÓXIMA CENA</Text>
+      <View style={s.nextDinnerCard}>
+        {image ? (
+          <Image source={{ uri: image }} style={s.nextDinnerImage} />
+        ) : (
+          <View style={[s.nextDinnerImage, { backgroundColor: C.primary }]} />
+        )}
+        <View style={s.nextDinnerBody}>
+          <View style={s.nextDinnerTopRow}>
+            <Text style={s.nextDinnerTitle} numberOfLines={1}>{title}</Text>
+            <View style={[s.nextDinnerStatus, isPending ? s.nextDinnerStatusPending : s.nextDinnerStatusOk]}>
+              <Text style={[s.nextDinnerStatusText, isPending && { color: '#7A5A0F' }]}>
+                {isPending ? 'Pendiente' : 'Confirmada'}
+              </Text>
+            </View>
+          </View>
+          {dateLine && <Text style={s.nextDinnerMeta} numberOfLines={1}>{dateLine}</Text>}
+          {host && <Text style={s.nextDinnerHost} numberOfLines={1}>con {host}</Text>}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
 // ─── Main Screen ───
 
 const HomeScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
   const events = useSelector(selectEvents);
+  const myReservations = useSelector(selectMyReservations);
   const isLoading = useSelector(selectEventsLoading);
   const error = useSelector(selectEventsError);
 
@@ -116,6 +169,25 @@ const HomeScreen = ({ navigation }) => {
   const [selectedCuisine, setSelectedCuisine] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
+
+  // ── Pull user reservations so we can render "Tu próxima cena" ──
+  useEffect(() => {
+    if (user?.id) dispatch(fetchUserReservations({ userId: user.id }));
+  }, [dispatch, user?.id]);
+
+  // ── Derive next upcoming reservation, joined with its event ──
+  const nextDinner = (() => {
+    const upcoming = (myReservations || [])
+      .filter(r => ['confirmed', 'pending'].includes(r.status))
+      .map(r => ({ reservation: r, event: events.find(e => e.id === r.event_id) || null }))
+      .filter(({ event }) => !event || !event.event_date || new Date(event.event_date) >= new Date())
+      .sort((a, b) => {
+        const da = a.event?.event_date ? new Date(a.event.event_date).getTime() : Infinity;
+        const db = b.event?.event_date ? new Date(b.event.event_date).getTime() : Infinity;
+        return da - db;
+      });
+    return upcoming[0] || null;
+  })();
 
   const loadEvents = useCallback(() => {
     const filters = {
@@ -132,24 +204,57 @@ const HomeScreen = ({ navigation }) => {
   }, [loadEvents]);
 
   useEffect(() => {
-    if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-      const stored = localStorage.getItem('userLocation');
-      if (stored) {
-        try { setUserLocation(JSON.parse(stored)); } catch (_) {}
+    let cancelled = false;
+
+    const persistLocation = async (loc) => {
+      if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+        localStorage.setItem('userLocation', JSON.stringify(loc));
+      } else {
+        try { await AsyncStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(loc)); } catch (_) {}
       }
-    }
-    if (Platform.OS === 'web' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
+    };
+
+    const loadCached = async () => {
+      try {
+        if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+          const stored = localStorage.getItem('userLocation');
+          if (stored && !cancelled) setUserLocation(JSON.parse(stored));
+        } else {
+          const stored = await AsyncStorage.getItem(LOCATION_STORAGE_KEY);
+          if (stored && !cancelled) setUserLocation(JSON.parse(stored));
+        }
+      } catch (_) {}
+    };
+
+    const fetchFresh = async () => {
+      if (Platform.OS === 'web') {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            if (cancelled) return;
+            const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            setUserLocation(loc);
+            persistLocation(loc);
+          },
+          () => {},
+        );
+      } else {
+        try {
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status !== 'granted' || cancelled) return;
+          const pos = await Location.getCurrentPositionAsync({});
+          if (cancelled) return;
           const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           setUserLocation(loc);
-          if (typeof localStorage !== 'undefined') {
-            localStorage.setItem('userLocation', JSON.stringify(loc));
-          }
-        },
-        () => {}
-      );
-    }
+          persistLocation(loc);
+        } catch (_) {}
+      }
+    };
+
+    loadCached();
+    fetchFresh();
+
+    return () => { cancelled = true; };
   }, []);
 
   const getDistanceText = useCallback((event) => {
@@ -206,6 +311,18 @@ const HomeScreen = ({ navigation }) => {
           <Text style={s.locationText}>Ubicación detectada</Text>
         )}
       </View>
+
+      {/* ── Tu próxima cena ── */}
+      {nextDinner && (
+        <NextDinnerBanner
+          reservation={nextDinner.reservation}
+          event={nextDinner.event}
+          onPress={() => navigation.navigate('EventDetail', {
+            eventId: nextDinner.reservation.event_id,
+            eventTitle: nextDinner.event?.title,
+          })}
+        />
+      )}
 
       {/* ── SECTION 2: Category filters ── */}
       <ScrollView
@@ -355,6 +472,84 @@ const s = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.surface,
+  },
+
+  // ── Next dinner banner ──
+  nextDinnerWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+    backgroundColor: C.surface,
+  },
+  nextDinnerLabel: {
+    fontFamily: SANS,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    color: C.muted,
+    marginBottom: 8,
+  },
+  nextDinnerCard: {
+    flexDirection: 'row',
+    backgroundColor: C.white,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: C.border,
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  nextDinnerImage: {
+    width: 96,
+    height: 96,
+  },
+  nextDinnerBody: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    justifyContent: 'center',
+  },
+  nextDinnerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  nextDinnerTitle: {
+    flex: 1,
+    fontFamily: SERIF,
+    fontSize: 17,
+    fontWeight: '600',
+    color: C.text,
+    marginRight: 8,
+  },
+  nextDinnerStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  nextDinnerStatusOk:      { backgroundColor: '#E2EFE0' },
+  nextDinnerStatusPending: { backgroundColor: '#FAF1DA' },
+  nextDinnerStatusText: {
+    fontFamily: SANS,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    color: C.primary,
+  },
+  nextDinnerMeta: {
+    fontFamily: SANS,
+    fontSize: 13,
+    color: C.text,
+    fontWeight: '500',
+  },
+  nextDinnerHost: {
+    fontFamily: SANS,
+    fontSize: 12,
+    color: C.muted,
+    marginTop: 2,
   },
 
   // ── Hero header ──
