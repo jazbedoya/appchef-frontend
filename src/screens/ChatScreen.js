@@ -265,6 +265,9 @@ const ChatScreen = ({ route }) => {
   const socketRef = useRef(null);
   const flatListRef = useRef(null);
   const myTokenPrefix = useRef(null);
+  const inputRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const MAX_RECONNECT_ATTEMPTS = 3;
 
   const loadRoomMembers = useCallback(async (roomId) => {
     if (!roomId) return;
@@ -296,9 +299,9 @@ const ChatScreen = ({ route }) => {
             ? [{ id: r.host_id || 'host', name: r.host_name, is_host: true, role: 'Anfitrión', distance_km: null }]
             : [],
         }));
-        setConversations(apiRooms.length > 0 ? apiRooms : MOCK_CONVERSATIONS);
+        setConversations(apiRooms);
       })
-      .catch(() => setConversations(MOCK_CONVERSATIONS));
+      .catch(() => setConversations([]));
   }, []);
 
   useFocusEffect(useCallback(() => {
@@ -316,7 +319,7 @@ const ChatScreen = ({ route }) => {
     };
   }, []);
 
-  const connectToRoom = useCallback(async (conversation) => {
+  const connectToRoom = useCallback(async (conversation, isReconnect = false) => {
     // Guard against concurrent calls (async gap between close and new WS creation)
     if (socketRef.current === 'connecting') return;
 
@@ -326,6 +329,7 @@ const ChatScreen = ({ route }) => {
       setIsConnected(false);
     }
     socketRef.current = 'connecting'; // sentinel prevents second concurrent call
+    if (!isReconnect) reconnectAttemptsRef.current = 0;
 
     let token = 'anonymous';
     try {
@@ -347,7 +351,7 @@ const ChatScreen = ({ route }) => {
 
     ws.onopen = () => {
       setIsConnected(true);
-      // Send join frame so server records our display name
+      reconnectAttemptsRef.current = 0;
       ws.send(JSON.stringify({
         type: 'join',
         sender_name: senderName,
@@ -393,14 +397,16 @@ const ChatScreen = ({ route }) => {
     };
 
     ws.onclose = () => {
-      // Only auto-reconnect if THIS socket is still the active one. If the
-      // user switched rooms or left the chat, socketRef.current points
-      // somewhere else (or null) — don't fight that close.
       if (socketRef.current !== ws) return;
       setIsConnected(false);
+      reconnectAttemptsRef.current += 1;
+      if (reconnectAttemptsRef.current > MAX_RECONNECT_ATTEMPTS) {
+        socketRef.current = null;
+        return;
+      }
       setTimeout(() => {
-        if (socketRef.current !== ws) return; // re-check after the wait
-        connectToRoom(conversation).catch(() => {});
+        if (socketRef.current !== ws) return;
+        connectToRoom(conversation, true).catch(() => {});
       }, 3000);
     };
 
@@ -477,9 +483,8 @@ const ChatScreen = ({ route }) => {
     const senderName = user?.profile?.first_name || user?.username || 'You';
 
     setInputText('');
+    inputRef.current?.setNativeProps({ text: '' });
 
-    // Send via WebSocket — server broadcasts back to all including sender
-    // Message appears via onmessage (single source of truth, no duplicates)
     const ws = socketRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
@@ -688,6 +693,7 @@ const ChatScreen = ({ route }) => {
           <Icon name="attach-outline" size={22} color={colors.gray500} />
         </TouchableOpacity>
         <TextInput
+          ref={inputRef}
           style={[styles.messageInput, isInputFocused && styles.messageInputFocused]}
           value={inputText}
           onChangeText={setInputText}
