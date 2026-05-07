@@ -2,11 +2,15 @@ import React, { useEffect } from 'react';
 import { View, Text, ActivityIndicator, Platform, StyleSheet } from 'react-native';
 import { Provider, useDispatch, useSelector } from 'react-redux';
 import { NavigationContainer } from '@react-navigation/native';
+import { StripeProvider } from '@stripe/stripe-react-native';
 
 import { store } from './src/store';
 import { loadStoredUser, selectIsAuthenticated, selectIsInitializing } from './src/store/authSlice';
 import AppNavigator from './src/navigation/AppNavigator';
 import AuthScreen from './src/screens/AuthScreen';
+
+const STRIPE_PUBLISHABLE_KEY =
+  process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder';
 
 // ─── Colors ───
 const CAFE = '#4A2C2A';
@@ -46,7 +50,13 @@ function AppInner() {
 export default function App() {
   return (
     <Provider store={store}>
-      <AppInner />
+      <StripeProvider
+        publishableKey={STRIPE_PUBLISHABLE_KEY}
+        merchantIdentifier="merchant.com.appchef.app"
+        urlScheme="appchef"
+      >
+        <AppInner />
+      </StripeProvider>
     </Provider>
   );
 }

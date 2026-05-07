@@ -531,6 +531,7 @@ const ProfileScreen = ({ navigation }) => {
         <View style={{ marginTop: 8, backgroundColor: C.white }}>
           {[
             ...(!isHost ? [{ icon: '🏠', label: 'Convertirme en Host', color: C.primary, onPress: () => setBecomeHostVisible(true) }] : []),
+            ...(isHost ? [{ icon: '💳', label: 'Cobrar como anfitrión', onPress: () => navigation.navigate('HostPaymentsSetup') }] : []),
             { icon: '⚙️', label: 'Configuración', onPress: () => setSettingsVisible(true) },
             { icon: '❓', label: 'Ayuda y soporte', onPress: () => setHelpVisible(true) },
             { icon: '🚪', label: 'Cerrar sesión', color: '#E8593C', onPress: handleLogout },

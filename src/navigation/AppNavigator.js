@@ -15,6 +15,7 @@ import HomeScreen from '../screens/HomeScreen';
 import MapScreen from '../screens/MapScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import HostPaymentsSetupScreen from '../screens/HostPaymentsSetupScreen';
 import ChatScreen from '../screens/ChatScreen';
 import AuthScreen from '../screens/AuthScreen';
 import CreateEventScreen from '../screens/CreateEventScreen';
@@ -111,6 +112,15 @@ const ProfileStack = () => (
     <Stack.Screen
       name="UserProfile"
       component={UserProfileScreen}
+    />
+    <Stack.Screen
+      name="HostPaymentsSetup"
+      component={HostPaymentsSetupScreen}
+      options={{
+        title: 'Cobrar como anfitrión',
+        headerStyle: { backgroundColor: colors.beige },
+        headerTitleStyle: { color: colors.cafe, fontWeight: '700' },
+      }}
       options={{ headerShown: false }}
     />
   </Stack.Navigator>
