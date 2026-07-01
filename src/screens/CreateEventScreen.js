@@ -1,9 +1,12 @@
 // CreateEventScreen.js — Wizard 3 pasos editorial conectado al backend
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
-import { format, addDays, setHours, setMinutes } from 'date-fns';
+import { Ionicons } from '@expo/vector-icons';
+import { Calendar } from 'react-native-calendars';
+import { format, setHours, setMinutes, parse } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 import { selectUser } from '../store/authSlice';
 import { reservationApi } from '../services/api';
@@ -12,7 +15,7 @@ import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { sizes } from '../theme/sizes';
-import { typography } from '../theme/typography';
+import { typography, fonts } from '../theme/typography';
 import StepHeader from '../components/StepHeader';
 import Field from '../components/Field';
 import Chip from '../components/Chip';
@@ -23,6 +26,31 @@ import BackButton from '../components/BackButton';
 
 const COCINAS = ['Italiana', 'Japonesa', 'Vegana', 'Española', 'Peruana', 'Mediterránea'];
 const ALERGENOS = ['Gluten', 'Lácteos', 'Frutos secos', 'Mariscos', 'Sin restricciones'];
+const QUICK_HOURS = [13, 14, 19, 20, 21, 22];
+
+const TODAY = format(new Date(), 'yyyy-MM-dd');
+
+// Calendar theme using project tokens
+const CAL_THEME = {
+  calendarBackground: colors.background,
+  dayTextColor: colors.textPrimary,
+  textDisabledColor: colors.placeholder,
+  monthTextColor: colors.textPrimary,
+  textMonthFontFamily: fonts.serifMedium,
+  textMonthFontSize: 20,
+  textDayHeaderFontFamily: fonts.mono,
+  textDayHeaderFontSize: 10,
+  textDayFontFamily: fonts.sans,
+  textDayFontSize: 15,
+  todayTextColor: colors.accent,
+  selectedDayBackgroundColor: colors.accent,
+  selectedDayTextColor: colors.onAccent,
+  arrowColor: colors.textPrimary,
+  'stylesheet.calendar.header': {
+    dayTextAtIndex0: { color: colors.textMuted },
+    dayTextAtIndex6: { color: colors.textMuted },
+  },
+};
 
 export default function CreateEventScreen({ navigation }) {
   const user = useSelector(selectUser);
@@ -35,13 +63,11 @@ export default function CreateEventScreen({ navigation }) {
   const [description, setDescription] = useState('');
 
   // Step 2
-  const [selectedDay, setSelectedDay] = useState(3); // index into next 14 days
-  const [selectedHour, setSelectedHour] = useState(21);
-  const [selectedMin, setSelectedMin] = useState(0);
-  const NEXT_DAYS = Array.from({ length: 14 }, (_, i) => addDays(new Date(), i + 1));
-  const HOURS = [12, 13, 14, 18, 19, 20, 21, 22];
-  const MINS = [0, 15, 30, 45];
-  const eventDate = setMinutes(setHours(NEXT_DAYS[selectedDay], selectedHour), selectedMin);
+  const [selectedDate, setSelectedDate] = useState(format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd'));
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [hour, setHour] = useState(21);
+  const [minute, setMinute] = useState(0);
+  const [timeInput, setTimeInput] = useState('21:00');
   const [plazas, setPlazas] = useState(6);
   const [price, setPrice] = useState('');
   const [menu, setMenu] = useState('');
@@ -50,6 +76,34 @@ export default function CreateEventScreen({ navigation }) {
   // Step 3
   const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
+
+  // Computed
+  const eventDate = setMinutes(setHours(parse(selectedDate, 'yyyy-MM-dd', new Date()), hour), minute);
+  const formattedDate = format(parse(selectedDate, 'yyyy-MM-dd', new Date()), "EEEE, d 'de' MMMM", { locale: es });
+
+  // Time sync
+  const syncTimeFromInput = (text) => {
+    setTimeInput(text);
+    const match = text.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+      const h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+        setHour(h);
+        setMinute(m);
+      }
+    }
+  };
+
+  const selectQuickHour = (h) => {
+    setHour(h);
+    setTimeInput(`${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
+  };
+
+  const selectQuickMin = (m) => {
+    setMinute(m);
+    setTimeInput(`${String(hour).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  };
 
   const goBack = () => {
     if (step === 1) navigation.goBack();
@@ -71,13 +125,12 @@ export default function CreateEventScreen({ navigation }) {
     if (!city.trim() || !address.trim()) return Alert.alert('Error', 'Añade ciudad y dirección');
     setSaving(true);
     try {
-      const eventDateISO = eventDate.toISOString();
       const body = {
         title: title.trim(),
         description: description.trim(),
         cuisine_type: [cocina],
         dining_style: 'dinner',
-        event_date: eventDateISO,
+        event_date: eventDate.toISOString(),
         max_guests: plazas,
         price_per_person: parseFloat(price),
         menu: { courses: [], notes: menu.trim() || null },
@@ -88,8 +141,7 @@ export default function CreateEventScreen({ navigation }) {
         host_name: user?.username || 'Chef',
       };
       const res = await reservationApi.post('/events', body);
-      const eventId = res.data.id;
-      await reservationApi.post(`/events/${eventId}/publish`);
+      await reservationApi.post(`/events/${res.data.id}/publish`);
       Alert.alert('¡Publicada!', 'Tu cena ya está en cartelera.', [
         { text: 'Ver inicio', onPress: () => navigation.goBack() },
       ]);
@@ -104,6 +156,7 @@ export default function CreateEventScreen({ navigation }) {
       <StepHeader step={step} stepLabel={['Info básica', 'Detalles', 'Revisar'][step - 1]} onBack={goBack} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll} keyboardShouldPersistTaps="handled">
+        {/* ── PASO 1 ── */}
         {step === 1 && (
           <>
             <Field label="Nombre de la cena *" placeholder="Ej: Noche de Pasta Clandestina" value={title} onChangeText={setTitle} autoCapitalize="sentences" />
@@ -117,34 +170,46 @@ export default function CreateEventScreen({ navigation }) {
           </>
         )}
 
+        {/* ── PASO 2 ── */}
         {step === 2 && (
           <>
+            {/* Fecha — botón que abre calendario modal */}
             <View style={st.block}>
               <Text style={st.sectionLabel}>Fecha *</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.dayScroll}>
-                {NEXT_DAYS.map((d, i) => (
-                  <Pressable key={i} onPress={() => setSelectedDay(i)} style={[st.dayChip, selectedDay === i && st.dayChipActive]}>
-                    <Text style={[st.dayChipDay, selectedDay === i && st.dayChipTextActive]}>{format(d, 'EEE').toUpperCase()}</Text>
-                    <Text style={[st.dayChipNum, selectedDay === i && st.dayChipTextActive]}>{format(d, 'd')}</Text>
-                    <Text style={[st.dayChipMonth, selectedDay === i && st.dayChipTextActive]}>{format(d, 'MMM').toUpperCase()}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <Pressable style={st.dateBtn} onPress={() => setShowCalendar(true)}>
+                <Ionicons name="calendar-outline" size={18} color={colors.accent} />
+                <Text style={st.dateBtnText}>{formattedDate}</Text>
+                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+              </Pressable>
             </View>
 
+            {/* Hora — input + chips rápidos */}
             <View style={st.block}>
               <Text style={st.sectionLabel}>Hora *</Text>
-              <View style={st.chips}>
-                {HOURS.map((h) => (
-                  <Chip key={h} label={`${h}:${String(selectedMin).padStart(2, '0')}`} selected={selectedHour === h} onPress={() => setSelectedHour(h)} />
+              <View style={st.timeRow}>
+                <TextInput
+                  style={st.timeInput}
+                  value={timeInput}
+                  onChangeText={syncTimeFromInput}
+                  placeholder="21:00"
+                  placeholderTextColor={colors.placeholder}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                />
+                <Text style={st.timeHint}>HH:MM</Text>
+              </View>
+              <View style={[st.chips, { marginTop: spacing.sm }]}>
+                {QUICK_HOURS.map((h) => (
+                  <Chip key={h} label={`${h}:00`} selected={hour === h && minute === 0} onPress={() => { selectQuickHour(h); selectQuickMin(0); }} />
                 ))}
               </View>
               <View style={[st.chips, { marginTop: spacing.xs }]}>
-                {MINS.map((m) => (
-                  <Chip key={m} label={`:${String(m).padStart(2, '0')}`} selected={selectedMin === m} onPress={() => setSelectedMin(m)} />
+                {[0, 15, 30, 45].map((m) => (
+                  <Chip key={m} label={`:${String(m).padStart(2, '0')}`} selected={minute === m} onPress={() => selectQuickMin(m)} />
                 ))}
               </View>
             </View>
+
             <View style={st.block}>
               <Text style={st.sectionLabel}>Número de plazas *</Text>
               <Stepper value={plazas} min={2} max={20} onChange={setPlazas} note={`${plazas} comensales`} />
@@ -160,6 +225,7 @@ export default function CreateEventScreen({ navigation }) {
           </>
         )}
 
+        {/* ── PASO 3 ── */}
         {step === 3 && (
           <>
             <Text style={st.kicker}>Así la verán tus invitados</Text>
@@ -173,7 +239,7 @@ export default function CreateEventScreen({ navigation }) {
             <Field label="Dirección *" placeholder="Calle Mayor 15" value={address} onChangeText={setAddress} autoCapitalize="sentences" />
             <View style={st.summary}>
               {[
-                { k: 'Fecha', v: format(eventDate, 'dd MMM yyyy · HH:mm') },
+                { k: 'Fecha', v: `${formattedDate} · ${timeInput}` },
                 { k: 'Plazas', v: `${plazas} comensales` },
                 { k: 'Precio', v: `€${price || '0'} / persona` },
                 { k: 'Alérgenos', v: alergeno },
@@ -188,20 +254,32 @@ export default function CreateEventScreen({ navigation }) {
         )}
       </ScrollView>
 
+      {/* Bottom bar */}
       <View style={st.bottomBar}>
         {step > 1 && <BackButton onPress={goBack} />}
         {step < 3 ? (
           <PrimaryButton label="Siguiente →" onPress={goNext} />
         ) : (
-          <PrimaryButton
-            label={saving ? '' : 'Publicar cena'}
-            variant="dark"
-            onPress={publish}
-            style={saving ? { opacity: 0.6 } : undefined}
-          />
+          <PrimaryButton label={saving ? '' : 'Publicar cena'} variant="dark" onPress={publish} style={saving ? { opacity: 0.6 } : undefined} />
         )}
         {saving && <ActivityIndicator color={colors.onAccent} style={st.savingSpinner} />}
       </View>
+
+      {/* Calendar modal */}
+      <Modal visible={showCalendar} animationType="fade" transparent onRequestClose={() => setShowCalendar(false)}>
+        <Pressable style={st.calOverlay} onPress={() => setShowCalendar(false)}>
+          <Pressable style={st.calCard} onPress={() => {}}>
+            <Calendar
+              theme={CAL_THEME}
+              minDate={TODAY}
+              markedDates={{ [selectedDate]: { selected: true } }}
+              onDayPress={(day) => { setSelectedDate(day.dateString); setShowCalendar(false); }}
+              firstDay={1}
+              enableSwipeMonths
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -212,22 +290,47 @@ const st = StyleSheet.create({
   block: { marginBottom: spacing.xl },
   sectionLabel: { ...typography.label, fontSize: 10, color: colors.textMuted, letterSpacing: 1.6, marginBottom: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  rowFields: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.xl },
-  half: { flex: 1 },
   kicker: { ...typography.label, fontSize: 10, color: colors.accent, letterSpacing: 1.6, marginBottom: spacing.sm },
 
+  // Date button
+  dateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    borderBottomWidth: borders.medium, borderBottomColor: colors.border,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.xxs,
+  },
+  dateBtnText: { ...typography.input, color: colors.textPrimary, flex: 1, textTransform: 'capitalize' },
+
+  // Time input
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  timeInput: {
+    ...typography.numeral, color: colors.textPrimary,
+    borderBottomWidth: borders.medium, borderBottomColor: colors.border,
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.xxs,
+    minWidth: 80, textAlign: 'center',
+  },
+  timeHint: { ...typography.label, color: colors.placeholder, letterSpacing: 1 },
+
+  // Calendar modal
+  calOverlay: {
+    flex: 1, backgroundColor: 'rgba(26,22,19,0.4)',
+    justifyContent: 'center', paddingHorizontal: spacing.xl,
+  },
+  calCard: {
+    backgroundColor: colors.background, borderRadius: radius.sm,
+    overflow: 'hidden', borderWidth: borders.medium, borderColor: colors.border,
+  },
+
+  // Preview card
   card: {
-    minHeight: sizes.coverImg,
-    borderRadius: radius.xs,
-    backgroundColor: colors.imagePlaceholder,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
+    minHeight: sizes.coverImg, borderRadius: radius.xs,
+    backgroundColor: colors.imagePlaceholder, overflow: 'hidden', justifyContent: 'flex-end',
     marginBottom: spacing.xl,
   },
   cardBody: { padding: spacing.md },
   cardOverline: { ...typography.labelSm, fontSize: 9, color: colors.accent, letterSpacing: 1.4, marginBottom: spacing.xxs + 1 },
   cardTitle: { ...typography.sectionTitleSm, fontSize: 24, color: colors.onAccent },
 
+  // Summary
   summary: { borderTopWidth: borders.hairline, borderTopColor: colors.border, marginTop: spacing.md },
   summaryRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -236,21 +339,11 @@ const st = StyleSheet.create({
   summaryKey: { ...typography.label, color: colors.textMuted, letterSpacing: 1.4 },
   summaryVal: { ...typography.bodyLg, color: colors.textPrimary },
 
+  // Bottom bar
   bottomBar: {
     flexDirection: 'row', gap: spacing.sm,
     paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: spacing.tabBarBottom,
     borderTopWidth: borders.hairline, borderTopColor: colors.border, backgroundColor: colors.background,
   },
   savingSpinner: { position: 'absolute', right: spacing.xl + 40, bottom: spacing.tabBarBottom + spacing.md + 4 },
-  dayScroll: { gap: spacing.xs, paddingRight: spacing.xl },
-  dayChip: {
-    alignItems: 'center', paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
-    borderWidth: borders.medium, borderColor: colors.border, borderRadius: radius.xs,
-    minWidth: 52,
-  },
-  dayChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  dayChipDay: { ...typography.labelSm, color: colors.textMuted, letterSpacing: 0.5 },
-  dayChipNum: { ...typography.numeral, color: colors.textPrimary, marginVertical: 1 },
-  dayChipMonth: { ...typography.labelSm, fontSize: 8, color: colors.textMuted, letterSpacing: 0.5 },
-  dayChipTextActive: { color: colors.onAccent },
 });
