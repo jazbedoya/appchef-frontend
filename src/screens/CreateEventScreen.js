@@ -183,10 +183,11 @@ export default function CreateEventScreen({ navigation }) {
               </Pressable>
             </View>
 
-            {/* Hora — input + chips rápidos */}
+            {/* Hora — solo input manual */}
             <View style={st.block}>
               <Text style={st.sectionLabel}>Hora *</Text>
               <View style={st.timeRow}>
+                <Ionicons name="time-outline" size={18} color={colors.accent} />
                 <TextInput
                   style={st.timeInput}
                   value={timeInput}
@@ -196,17 +197,7 @@ export default function CreateEventScreen({ navigation }) {
                   keyboardType="numbers-and-punctuation"
                   maxLength={5}
                 />
-                <Text style={st.timeHint}>HH:MM</Text>
-              </View>
-              <View style={[st.chips, { marginTop: spacing.sm }]}>
-                {QUICK_HOURS.map((h) => (
-                  <Chip key={h} label={`${h}:00`} selected={hour === h && minute === 0} onPress={() => { selectQuickHour(h); selectQuickMin(0); }} />
-                ))}
-              </View>
-              <View style={[st.chips, { marginTop: spacing.xs }]}>
-                {[0, 15, 30, 45].map((m) => (
-                  <Chip key={m} label={`:${String(m).padStart(2, '0')}`} selected={minute === m} onPress={() => selectQuickMin(m)} />
-                ))}
+                <Text style={st.timeHint}>formato 24h</Text>
               </View>
             </View>
 
