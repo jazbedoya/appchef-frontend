@@ -3,8 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { format } from 'date-fns';
+import { format, addDays, setHours, setMinutes } from 'date-fns';
 
 import { selectUser } from '../store/authSlice';
 import { reservationApi } from '../services/api';
@@ -36,9 +35,13 @@ export default function CreateEventScreen({ navigation }) {
   const [description, setDescription] = useState('');
 
   // Step 2
-  const [eventDate, setEventDate] = useState(new Date(Date.now() + 7 * 86400000)); // default: 1 semana
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedDay, setSelectedDay] = useState(3); // index into next 14 days
+  const [selectedHour, setSelectedHour] = useState(21);
+  const [selectedMin, setSelectedMin] = useState(0);
+  const NEXT_DAYS = Array.from({ length: 14 }, (_, i) => addDays(new Date(), i + 1));
+  const HOURS = [12, 13, 14, 18, 19, 20, 21, 22];
+  const MINS = [0, 15, 30, 45];
+  const eventDate = setMinutes(setHours(NEXT_DAYS[selectedDay], selectedHour), selectedMin);
   const [plazas, setPlazas] = useState(6);
   const [price, setPrice] = useState('');
   const [menu, setMenu] = useState('');
@@ -116,36 +119,32 @@ export default function CreateEventScreen({ navigation }) {
 
         {step === 2 && (
           <>
-            <View style={st.rowFields}>
-              <View style={st.half}>
-                <Text style={st.sectionLabel}>Fecha *</Text>
-                <Pressable style={st.pickerBtn} onPress={() => setShowDatePicker(true)}>
-                  <Text style={st.pickerText}>{format(eventDate, 'dd / MM / yyyy')}</Text>
-                </Pressable>
+            <View style={st.block}>
+              <Text style={st.sectionLabel}>Fecha *</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.dayScroll}>
+                {NEXT_DAYS.map((d, i) => (
+                  <Pressable key={i} onPress={() => setSelectedDay(i)} style={[st.dayChip, selectedDay === i && st.dayChipActive]}>
+                    <Text style={[st.dayChipDay, selectedDay === i && st.dayChipTextActive]}>{format(d, 'EEE').toUpperCase()}</Text>
+                    <Text style={[st.dayChipNum, selectedDay === i && st.dayChipTextActive]}>{format(d, 'd')}</Text>
+                    <Text style={[st.dayChipMonth, selectedDay === i && st.dayChipTextActive]}>{format(d, 'MMM').toUpperCase()}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={st.block}>
+              <Text style={st.sectionLabel}>Hora *</Text>
+              <View style={st.chips}>
+                {HOURS.map((h) => (
+                  <Chip key={h} label={`${h}:${String(selectedMin).padStart(2, '0')}`} selected={selectedHour === h} onPress={() => setSelectedHour(h)} />
+                ))}
               </View>
-              <View style={st.half}>
-                <Text style={st.sectionLabel}>Hora *</Text>
-                <Pressable style={st.pickerBtn} onPress={() => setShowTimePicker(true)}>
-                  <Text style={st.pickerText}>{format(eventDate, 'HH:mm')}</Text>
-                </Pressable>
+              <View style={[st.chips, { marginTop: spacing.xs }]}>
+                {MINS.map((m) => (
+                  <Chip key={m} label={`:${String(m).padStart(2, '0')}`} selected={selectedMin === m} onPress={() => setSelectedMin(m)} />
+                ))}
               </View>
             </View>
-            {showDatePicker && (
-              <DateTimePicker
-                value={eventDate}
-                mode="date"
-                minimumDate={new Date()}
-                onChange={(_, d) => { setShowDatePicker(Platform.OS === 'ios'); if (d) setEventDate(prev => { const n = new Date(prev); n.setFullYear(d.getFullYear(), d.getMonth(), d.getDate()); return n; }); }}
-              />
-            )}
-            {showTimePicker && (
-              <DateTimePicker
-                value={eventDate}
-                mode="time"
-                is24Hour
-                onChange={(_, d) => { setShowTimePicker(Platform.OS === 'ios'); if (d) setEventDate(prev => { const n = new Date(prev); n.setHours(d.getHours(), d.getMinutes()); return n; }); }}
-              />
-            )}
             <View style={st.block}>
               <Text style={st.sectionLabel}>Número de plazas *</Text>
               <Stepper value={plazas} min={2} max={20} onChange={setPlazas} note={`${plazas} comensales`} />
@@ -243,9 +242,15 @@ const st = StyleSheet.create({
     borderTopWidth: borders.hairline, borderTopColor: colors.border, backgroundColor: colors.background,
   },
   savingSpinner: { position: 'absolute', right: spacing.xl + 40, bottom: spacing.tabBarBottom + spacing.md + 4 },
-  pickerBtn: {
-    borderBottomWidth: borders.medium, borderBottomColor: colors.border,
-    paddingVertical: spacing.sm, paddingHorizontal: spacing.xxs,
+  dayScroll: { gap: spacing.xs, paddingRight: spacing.xl },
+  dayChip: {
+    alignItems: 'center', paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
+    borderWidth: borders.medium, borderColor: colors.border, borderRadius: radius.xs,
+    minWidth: 52,
   },
-  pickerText: { ...typography.input, color: colors.textPrimary },
+  dayChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  dayChipDay: { ...typography.labelSm, color: colors.textMuted, letterSpacing: 0.5 },
+  dayChipNum: { ...typography.numeral, color: colors.textPrimary, marginVertical: 1 },
+  dayChipMonth: { ...typography.labelSm, fontSize: 8, color: colors.textMuted, letterSpacing: 0.5 },
+  dayChipTextActive: { color: colors.onAccent },
 });
