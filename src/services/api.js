@@ -2,11 +2,10 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── Service URLs ───
-// En Android emulator, usar IP de WSL2 en lugar de localhost
 import { Platform } from 'react-native';
-const HOST = Platform.OS === 'android' ? '172.19.140.145' : 'localhost';
+const HOST = Platform.OS === 'web' ? 'localhost' : '192.168.1.99';
 
-export const USER_SERVICE_URL = `http://${HOST}:8001`;
+export const USER_SERVICE_URL = `http://${HOST}:8000`;
 export const RESERVATION_SERVICE_URL = `http://${HOST}:8002`;
 export const CHAT_SERVICE_URL = `http://${HOST}:8004`;
 

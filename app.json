@@ -9,7 +9,9 @@
     "splash": {
       "backgroundColor": "#4A2C2A"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appchef.app"
@@ -28,6 +30,7 @@
     "web": {
       "favicon": "./assets/icon.png",
       "bundler": "metro"
-    }
+    },
+    "plugins": []
   }
 }
