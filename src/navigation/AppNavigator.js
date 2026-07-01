@@ -44,6 +44,11 @@ function HomeStackScreen() {
           headerShadowVisible: false,
         }}
       />
+      <HomeStackNav.Screen
+        name="ChefProfile"
+        component={ChefProfileScreen}
+        options={{ headerShown: false }}
+      />
     </HomeStackNav.Navigator>
   );
 }

@@ -223,16 +223,21 @@ const EventDetailScreen = ({ route, navigation }) => {
           {/* Title */}
           <Text style={styles.title}>{title}</Text>
 
-          {/* Host info */}
-          <View style={styles.hostRow}>
+          {/* Host info — pulsable */}
+          <TouchableOpacity
+            style={styles.hostRow}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('ChefProfile', { userId: event.host_id, userName: hostDisplayName })}
+          >
             <View style={styles.hostIconCircle}>
-              <Icon name="person" size={16} color={WHITE} />
+              <Text style={styles.hostInitial}>{hostDisplayName[0]?.toUpperCase() || '?'}</Text>
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.hostLabel}>Anfitrión</Text>
               <Text style={styles.hostName}>{hostDisplayName}</Text>
             </View>
-          </View>
+            <Icon name="chevron-forward" size={16} color={GRAY_500} />
+          </TouchableOpacity>
 
           {/* Info grid */}
           <View style={styles.infoGrid}>
@@ -311,13 +316,17 @@ const EventDetailScreen = ({ route, navigation }) => {
             </View>
           )}
 
-          {/* Host bio */}
+          {/* Host bio — pulsable */}
           {host?.profile?.bio ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Tu anfitrión</Text>
-              <View style={styles.hostBioCard}>
+              <TouchableOpacity
+                style={styles.hostBioCard}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('ChefProfile', { userId: event.host_id, userName: hostDisplayName })}
+              >
                 <View style={styles.hostBioIconCircle}>
-                  <Icon name="person" size={24} color={WHITE} />
+                  <Text style={styles.hostBioInitial}>{hostDisplayName[0]?.toUpperCase() || '?'}</Text>
                 </View>
                 <View style={styles.hostBioInfo}>
                   <Text style={styles.hostBioName}>{hostDisplayName}</Text>
@@ -325,7 +334,8 @@ const EventDetailScreen = ({ route, navigation }) => {
                     {host.profile.bio}
                   </Text>
                 </View>
-              </View>
+                <Icon name="chevron-forward" size={16} color={GRAY_500} style={{ alignSelf: 'center' }} />
+              </TouchableOpacity>
             </View>
           ) : null}
 
@@ -400,7 +410,7 @@ const EventDetailScreen = ({ route, navigation }) => {
               <ActivityIndicator size="small" color={WHITE} />
             ) : (
               <Text style={styles.reserveButtonText}>
-                {isSoldOut ? 'Sin plazas' : `Reservar plaza · €${totalPrice}`}
+                {isSoldOut ? 'Lista de espera' : `Solicitar sitio · €${totalPrice}`}
               </Text>
             )}
           </TouchableOpacity>
@@ -503,6 +513,11 @@ const styles = StyleSheet.create({
     backgroundColor: CAFE,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  hostInitial: {
+    color: WHITE,
+    fontSize: 15,
+    fontWeight: '700',
   },
   hostLabel: {
     fontSize: 10,
@@ -643,6 +658,11 @@ const styles = StyleSheet.create({
   },
   hostBioInfo: {
     flex: 1,
+  },
+  hostBioInitial: {
+    color: WHITE,
+    fontSize: 18,
+    fontWeight: '700',
   },
   hostBioName: {
     fontSize: 15,
