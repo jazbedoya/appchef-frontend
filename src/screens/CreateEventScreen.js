@@ -1,8 +1,10 @@
 // CreateEventScreen.js — Wizard 3 pasos editorial conectado al backend
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { format } from 'date-fns';
 
 import { selectUser } from '../store/authSlice';
 import { reservationApi } from '../services/api';
@@ -34,8 +36,9 @@ export default function CreateEventScreen({ navigation }) {
   const [description, setDescription] = useState('');
 
   // Step 2
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
+  const [eventDate, setEventDate] = useState(new Date(Date.now() + 7 * 86400000)); // default: 1 semana
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [plazas, setPlazas] = useState(6);
   const [price, setPrice] = useState('');
   const [menu, setMenu] = useState('');
@@ -56,7 +59,6 @@ export default function CreateEventScreen({ navigation }) {
       if (!description.trim()) return Alert.alert('Error', 'Añade una descripción');
     }
     if (step === 2) {
-      if (!date.trim() || !time.trim()) return Alert.alert('Error', 'Añade fecha y hora');
       if (!price.trim()) return Alert.alert('Error', 'Añade el precio');
     }
     setStep(step + 1);
@@ -66,13 +68,13 @@ export default function CreateEventScreen({ navigation }) {
     if (!city.trim() || !address.trim()) return Alert.alert('Error', 'Añade ciudad y dirección');
     setSaving(true);
     try {
-      const eventDate = `${date.trim()}T${time.trim()}:00`;
+      const eventDateISO = eventDate.toISOString();
       const body = {
         title: title.trim(),
         description: description.trim(),
         cuisine_type: JSON.stringify([cocina]),
         dining_style: 'dinner',
-        event_date: eventDate,
+        event_date: eventDateISO,
         max_guests: plazas,
         price_per_person: parseFloat(price),
         menu: JSON.stringify({ descripcion: menu.trim() }),
@@ -115,9 +117,35 @@ export default function CreateEventScreen({ navigation }) {
         {step === 2 && (
           <>
             <View style={st.rowFields}>
-              <Field label="Fecha *" placeholder="2026-07-15" value={date} onChangeText={setDate} containerStyle={st.half} />
-              <Field label="Hora *" placeholder="21:00" value={time} onChangeText={setTime} containerStyle={st.half} />
+              <View style={st.half}>
+                <Text style={st.sectionLabel}>Fecha *</Text>
+                <Pressable style={st.pickerBtn} onPress={() => setShowDatePicker(true)}>
+                  <Text style={st.pickerText}>{format(eventDate, 'dd / MM / yyyy')}</Text>
+                </Pressable>
+              </View>
+              <View style={st.half}>
+                <Text style={st.sectionLabel}>Hora *</Text>
+                <Pressable style={st.pickerBtn} onPress={() => setShowTimePicker(true)}>
+                  <Text style={st.pickerText}>{format(eventDate, 'HH:mm')}</Text>
+                </Pressable>
+              </View>
             </View>
+            {showDatePicker && (
+              <DateTimePicker
+                value={eventDate}
+                mode="date"
+                minimumDate={new Date()}
+                onChange={(_, d) => { setShowDatePicker(Platform.OS === 'ios'); if (d) setEventDate(prev => { const n = new Date(prev); n.setFullYear(d.getFullYear(), d.getMonth(), d.getDate()); return n; }); }}
+              />
+            )}
+            {showTimePicker && (
+              <DateTimePicker
+                value={eventDate}
+                mode="time"
+                is24Hour
+                onChange={(_, d) => { setShowTimePicker(Platform.OS === 'ios'); if (d) setEventDate(prev => { const n = new Date(prev); n.setHours(d.getHours(), d.getMinutes()); return n; }); }}
+              />
+            )}
             <View style={st.block}>
               <Text style={st.sectionLabel}>Número de plazas *</Text>
               <Stepper value={plazas} min={2} max={20} onChange={setPlazas} note={`${plazas} comensales`} />
@@ -146,7 +174,7 @@ export default function CreateEventScreen({ navigation }) {
             <Field label="Dirección *" placeholder="Calle Mayor 15" value={address} onChangeText={setAddress} autoCapitalize="sentences" />
             <View style={st.summary}>
               {[
-                { k: 'Fecha', v: `${date} · ${time}` },
+                { k: 'Fecha', v: format(eventDate, 'dd MMM yyyy · HH:mm') },
                 { k: 'Plazas', v: `${plazas} comensales` },
                 { k: 'Precio', v: `€${price || '0'} / persona` },
                 { k: 'Alérgenos', v: alergeno },
@@ -185,7 +213,7 @@ const st = StyleSheet.create({
   block: { marginBottom: spacing.xl },
   sectionLabel: { ...typography.label, fontSize: 10, color: colors.textMuted, letterSpacing: 1.6, marginBottom: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  rowFields: { flexDirection: 'row', gap: spacing.md },
+  rowFields: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.xl },
   half: { flex: 1 },
   kicker: { ...typography.label, fontSize: 10, color: colors.accent, letterSpacing: 1.6, marginBottom: spacing.sm },
 
@@ -215,4 +243,9 @@ const st = StyleSheet.create({
     borderTopWidth: borders.hairline, borderTopColor: colors.border, backgroundColor: colors.background,
   },
   savingSpinner: { position: 'absolute', right: spacing.xl + 40, bottom: spacing.tabBarBottom + spacing.md + 4 },
+  pickerBtn: {
+    borderBottomWidth: borders.medium, borderBottomColor: colors.border,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.xxs,
+  },
+  pickerText: { ...typography.input, color: colors.textPrimary },
 });
