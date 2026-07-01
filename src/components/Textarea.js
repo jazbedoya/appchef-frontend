@@ -8,8 +8,10 @@ import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
 
-export default function Textarea({ label, hint, placeholder, minHeight, maxLength, containerStyle }) {
-  const [text, setText] = useState('');
+export default function Textarea({ label, hint, placeholder, minHeight, maxLength, containerStyle, value: valueProp, onChangeText }) {
+  const [local, setLocal] = useState('');
+  const text = valueProp !== undefined ? valueProp : local;
+  const setText = onChangeText || setLocal;
   return (
     <View style={[styles.container, containerStyle]}>
       <Text style={styles.label}>

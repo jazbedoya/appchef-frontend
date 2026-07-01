@@ -108,7 +108,7 @@ export default function CreateEventScreen({ navigation }) {
                 {COCINAS.map((c) => <Chip key={c} label={c} selected={cocina === c} onPress={() => setCocina(c)} />)}
               </View>
             </View>
-            <Textarea label="Descripción *" placeholder="Describe la experiencia que vivirán tus invitados…" maxLength={300} />
+            <Textarea label="Descripción *" placeholder="Describe la experiencia que vivirán tus invitados…" maxLength={300} value={description} onChangeText={setDescription} />
           </>
         )}
 
@@ -123,7 +123,7 @@ export default function CreateEventScreen({ navigation }) {
               <Stepper value={plazas} min={2} max={20} onChange={setPlazas} note={`${plazas} comensales`} />
             </View>
             <Field label="Precio por persona *" placeholder="45" value={price} onChangeText={setPrice} keyboardType="numeric" />
-            <Textarea label="Menú" hint="opcional" placeholder="Describe los platos que servirás…" />
+            <Textarea label="Menú" hint="opcional" placeholder="Describe los platos que servirás…" value={menu} onChangeText={setMenu} />
             <View style={st.block}>
               <Text style={st.sectionLabel}>Alérgenos · opcional</Text>
               <View style={st.chips}>
