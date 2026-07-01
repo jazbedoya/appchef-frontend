@@ -14,4 +14,8 @@ export const sizes = {
   handleH: 4,
   homeIndicatorW: 134,
   homeIndicatorH: 5,
+  // Create flow
+  stepperBtn: 40,
+  textareaMinSm: 80,
+  coverImg: 200,
 };

@@ -55,6 +55,9 @@ export const typography = {
   wordmark: { fontFamily: fonts.serifMedium, fontWeight: '500', fontSize: 32, lineHeight: 38, letterSpacing: 6 },
   wordmarkSm: { fontFamily: fonts.serifMedium, fontWeight: '500', fontSize: 24, lineHeight: 30, letterSpacing: 4 },
   input: { fontFamily: fonts.sans, fontWeight: '400', fontSize: 15, lineHeight: 20, letterSpacing: 0 },
+  // Create flow
+  chip: { fontFamily: fonts.sansMedium, fontWeight: '500', fontSize: 13, lineHeight: 16, letterSpacing: 0 },
+  numeral: { fontFamily: fonts.mono, fontWeight: '400', fontSize: 22, lineHeight: 26, letterSpacing: 0 },
 };
 
 // Compat: old screens use default import
