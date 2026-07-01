@@ -101,7 +101,7 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.wordmark}>APP CHEF</Text>
           <View style={styles.rule} />
           <Text style={[styles.metaLabel, styles.centered]}>
-            Cenas privadas por invitación
+            La comida es la excusa, lo interesante viene después
           </Text>
         </View>
 

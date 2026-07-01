@@ -1,7 +1,7 @@
 // MapScreen.js — Mapa + lista inferior siempre visible + perfil del chef
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, FlatList, Platform, ActivityIndicator,
+  View, Text, TextInput, StyleSheet, Pressable, FlatList, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
@@ -46,6 +46,26 @@ const MapScreen = ({ navigation }) => {
   const [locDenied, setLocDenied] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState(null);
+  const [cityQuery, setCityQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+
+  const searchCity = async () => {
+    const q = cityQuery.trim();
+    if (!q) return;
+    setSearching(true);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
+      const data = await res.json();
+      if (data.length > 0) {
+        const { lat, lon } = data[0];
+        const coords = { latitude: parseFloat(lat), longitude: parseFloat(lon), latitudeDelta: 0.09, longitudeDelta: 0.04 };
+        setRegion(coords);
+        mapRef.current?.animateToRegion(coords, 500);
+        dispatch(fetchNearbyEvents({ lat: parseFloat(lat), lng: parseFloat(lon), radius_km: 50 }));
+      }
+    } catch {}
+    setSearching(false);
+  };
 
   useEffect(() => {
     (async () => {
@@ -139,7 +159,7 @@ const MapScreen = ({ navigation }) => {
           )}
         </MapView>
 
-        {/* Header */}
+        {/* Header + search */}
         <SafeAreaView edges={['top']} style={st.headerWrap}>
           <View style={st.header}>
             <View style={st.headerTop}>
@@ -149,6 +169,25 @@ const MapScreen = ({ navigation }) => {
               <Pressable onPress={refreshArea}>
                 <Text style={st.headerAction}>Actualizar</Text>
               </Pressable>
+            </View>
+            <View style={st.searchRow}>
+              <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+              <TextInput
+                style={st.searchInput}
+                value={cityQuery}
+                onChangeText={setCityQuery}
+                placeholder="Buscar ciudad..."
+                placeholderTextColor={colors.placeholder}
+                returnKeyType="search"
+                onSubmitEditing={searchCity}
+              />
+              {searching ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : cityQuery.length > 0 ? (
+                <Pressable onPress={searchCity}>
+                  <Text style={st.searchGo}>IR</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         </SafeAreaView>
@@ -230,6 +269,13 @@ const st = StyleSheet.create({
     ...typography.label, fontSize: 10, color: colors.textPrimary, letterSpacing: 1.2,
     borderBottomWidth: borders.medium, borderBottomColor: colors.accent, paddingBottom: spacing.xxs / 2,
   },
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    borderBottomWidth: borders.hairline, borderBottomColor: colors.border,
+    marginTop: spacing.xs, paddingVertical: spacing.xxs,
+  },
+  searchInput: { ...typography.body, flex: 1, color: colors.textPrimary, paddingVertical: spacing.xxs },
+  searchGo: { ...typography.button, fontSize: 10, color: colors.accent, letterSpacing: 1 },
 
   // Search
   searchArea: { position: 'absolute', bottom: spacing.md, alignSelf: 'center' },
