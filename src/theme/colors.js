@@ -59,4 +59,5 @@ export const colors = {
   success: '#2E7D32',
   starEmpty: '#D0C9BC',
   primary: '#1A1613',
+  placeholder: '#B3A898',
 };
