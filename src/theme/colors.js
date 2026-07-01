@@ -44,4 +44,19 @@ export const colors = {
 
   // Chrome
   scrim: 'rgba(26,22,19,0.28)', // home indicator / velos
+
+  // Compat: old screens reference these tokens
+  white: '#FFFFFF',
+  cafe: '#1A1613',
+  beige: '#F1EADD',
+  beigeDark: '#E7DECC',
+  beigeLight: '#F5EFE3',
+  terracotta: '#BF4726',
+  gold: '#BF4726',
+  gray: '#8B8072',
+  error: '#D32F2F',
+  errorLight: '#FDECEA',
+  success: '#2E7D32',
+  starEmpty: '#D0C9BC',
+  primary: '#1A1613',
 };

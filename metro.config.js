@@ -4,6 +4,7 @@ const path = require('path');
 const config = getDefaultConfig(__dirname);
 
 config.resolver.platforms = ['web', 'native', 'ios', 'android'];
+config.resolver.assetExts = [...(config.resolver.assetExts || []), 'ttf', 'otf'];
 
 // Force Babel to transform react-native source files (RN 0.81 has ES2022 syntax)
 config.transformer = {
