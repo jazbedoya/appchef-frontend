@@ -1,93 +1,47 @@
+// src/theme/colors.js
+// -----------------------------------------------------------------------------
+// Paleta SEMÁNTICA del rediseño editorial de App Chef.
+// Acento bermellón (sustituye al gold antiguo #D4A853), fondo marfil, tinta casi
+// negra. Todos los valores de color de la app salen de aquí — ni un hex suelto en
+// los componentes.
+// -----------------------------------------------------------------------------
+
 export const colors = {
-  // ─── Nueva paleta: Elegancia Gastronómica ───
+  // Acento
+  accent: '#BF4726', // bermellón: CTAs, precios destacados, pines, badge, tab activa
+  onAccent: '#F1EADD', // texto/icono sobre el acento
 
-  // Primarios
-  primary: '#2C3E2D',         // Verde bosque profundo
-  primaryLight: '#4A6741',    // Verde salvia
-  accent: '#D4A853',          // Dorado cálido
-  accentLight: '#F0C97A',     // Dorado suave
-
-  // Superficies
-  surface: '#FDFAF5',         // Blanco marfil
-  surface2: '#F5F0E8',        // Crema suave para inputs
-  border: '#E2D9C8',          // Borde arena
+  // Fondos y superficies
+  background: '#F1EADD', // marfil: fondo de todas las pantallas
+  surface: '#E7DECC', // bloques del mapa / superficies secundarias
+  surfaceAlt: '#EBE3D3', // base del mapa
 
   // Texto
-  text: '#1C1C1C',            // Casi negro
-  textMuted: '#7A7A6E',       // Gris oliva
+  textPrimary: '#1A1613', // tinta: titulares, cuerpo principal, iconos
+  textSecondary: '#5F574A', // standfirst en serif itálica
+  textMuted: '#8B8072', // metadatos, versalitas, precios secundarios
 
-  // Compatibilidad con código existente (remapeado a nueva paleta)
-  navy: '#2C3E2D',
-  navyLight: '#4A6741',
-  navyDark: '#1B2B1C',
+  // Líneas
+  border: '#1A1613', // filetes fuertes (reglas de portada, marcos, botones outline)
+  borderHairline: 'rgba(26,22,19,0.14)', // filetes finos entre items de lista
 
-  gold: '#D4A853',
-  goldLight: '#F0C97A',
-  goldDark: '#C9963A',
+  // Comercio
+  price: '#1A1613', // precio en fichas (mono)
+  badge: '#BF4726', // fondo del contador de mensajes no leídos
+  onBadge: '#F1EADD', // texto del badge
 
-  cream: '#FDFAF5',
-  creamDark: '#F5F0E8',
-  creamDarker: '#EDE8DF',
+  // Placeholder de imagen (donde irá un <Image> real)
+  imagePlaceholder: '#221D16',
+  onImageMuted: 'rgba(241,234,221,0.32)',
 
-  cafe: '#2C3E2D',
-  cafeLight: '#4A6741',
-  cafeDark: '#1B2B1C',
-  beige: '#EDE8DF',
-  beigeLight: '#FDFAF5',
-  beigeDark: '#F5F0E8',
-  terracotta: '#D4A853',
-  terracottaLight: '#F0C97A',
-  terracottaDark: '#C9963A',
-  oliveGreen: '#4A6741',
-  oliveGreenLight: '#6A8C5F',
-  oliveGreenDark: '#2C3E2D',
+  // Mapa (alphas ya horneados para no necesitar tokens de opacidad)
+  mapWater: '#DDD4C0',
+  mapPark: '#E3DBC8',
+  mapRoad: 'rgba(26,22,19,0.5)',
+  mapRoadFaint: 'rgba(26,22,19,0.3)',
+  locationDot: '#1A1613',
+  locationHalo: 'rgba(26,22,19,0.14)',
 
-  // Neutrals
-  white: '#FFFFFF',
-  offWhite: '#FDFAF5',
-  gray100: '#EDE8DF',
-  gray200: '#E2D9C8',
-  gray300: '#C8BFB0',
-  gray400: '#B0A898',
-  gray500: '#7A7A6E',
-  gray600: '#5E5E55',
-  gray700: '#3E3E38',
-  gray800: '#1C1C1C',
-  black: '#1C1C1C',
-
-  // Semánticos
-  success: '#4CAF50',
-  successLight: '#E8F5E9',
-  warning: '#FF9800',
-  warningLight: '#FFF3E0',
-  error: '#D32F2F',
-  errorLight: '#FFEBEE',
-  info: '#1976D2',
-  infoLight: '#E3F2FD',
-
-  // Interactivos
-  link: '#D4A853',
-  focus: '#2C3E2D',
-  overlay: 'rgba(44, 62, 45, 0.6)',
-  overlayLight: 'rgba(44, 62, 45, 0.2)',
-
-  // Gradients
-  gradientWarm: ['#1B2B1C', '#2C3E2D'],
-  gradientBeige: ['#FDFAF5', '#EDE8DF'],
-  gradientHero: ['rgba(27, 43, 28, 0.85)', 'rgba(201, 150, 58, 0.6)'],
-
-  // Ratings
-  starFilled: '#D4A853',
-  starEmpty: '#C8BFB0',
-
-  // Status
-  statusPublished: '#4A6741',
-  statusDraft: '#7A7A6E',
-  statusSoldOut: '#D32F2F',
-  statusCancelled: '#9E9E9E',
-  statusCompleted: '#2C3E2D',
-
-  transparent: 'transparent',
+  // Chrome
+  scrim: 'rgba(26,22,19,0.28)', // home indicator / velos
 };
-
-export default colors;

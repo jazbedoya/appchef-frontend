@@ -1,75 +1,84 @@
-import React, { useEffect } from 'react';
-import { View, Text, ActivityIndicator, Platform, StyleSheet } from 'react-native';
+import React, { useEffect, useCallback } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { Provider, useDispatch, useSelector } from 'react-redux';
 import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import { useFonts, Newsreader_400Regular, Newsreader_500Medium, Newsreader_400Regular_Italic } from '@expo-google-fonts/newsreader';
+import { HankenGrotesk_400Regular, HankenGrotesk_500Medium, HankenGrotesk_600SemiBold } from '@expo-google-fonts/hanken-grotesk';
+import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
 
 import { store } from './src/store';
 import { loadStoredUser, selectIsAuthenticated, selectIsInitializing } from './src/store/authSlice';
 import AppNavigator from './src/navigation/AppNavigator';
 import AuthScreen from './src/screens/AuthScreen';
+import { colors } from './src/theme/colors';
+import { typography } from './src/theme/typography';
+import { spacing } from './src/theme/spacing';
 
-// ─── Colors ───
-const CAFE = '#4A2C2A';
-const BEIGE = '#F5E6D3';
-const TERRACOTA = '#C4622D';
-
-// ─── Inner App (has access to Redux store) ───
+SplashScreen.preventAutoHideAsync();
 
 function AppInner() {
   const dispatch = useDispatch();
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const isInitializing = useSelector(selectIsInitializing);
 
-  useEffect(() => {
-    dispatch(loadStoredUser());
-  }, [dispatch]);
+  const [fontsLoaded] = useFonts({
+    Newsreader_400Regular,
+    Newsreader_500Medium,
+    Newsreader_400Regular_Italic,
+    HankenGrotesk_400Regular,
+    HankenGrotesk_500Medium,
+    HankenGrotesk_600SemiBold,
+    SpaceMono_400Regular,
+    SpaceMono_700Bold,
+  });
 
-  if (isInitializing) {
+  useEffect(() => { dispatch(loadStoredUser()); }, [dispatch]);
+
+  const onReady = useCallback(async () => {
+    if (fontsLoaded && !isInitializing) await SplashScreen.hideAsync();
+  }, [fontsLoaded, isInitializing]);
+
+  if (!fontsLoaded || isInitializing) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingTitle}>App Chef</Text>
-        <ActivityIndicator size="large" color={TERRACOTA} style={{ marginTop: 16 }} />
-        <Text style={styles.loadingSubtitle}>Cargando...</Text>
+      <View style={styles.loading} onLayout={onReady}>
+        <Text style={styles.wordmark}>APP CHEF</Text>
+        <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.xl }} />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
-      {isAuthenticated ? <AppNavigator /> : <AuthScreen />}
-    </NavigationContainer>
+    <View style={{ flex: 1 }} onLayout={onReady}>
+      <StatusBar style="dark" />
+      <NavigationContainer>
+        {isAuthenticated ? <AppNavigator /> : <AuthScreen />}
+      </NavigationContainer>
+    </View>
   );
 }
-
-// ─── Root App ───
 
 export default function App() {
   return (
-    <Provider store={store}>
-      <AppInner />
-    </Provider>
+    <SafeAreaProvider>
+      <Provider store={store}>
+        <AppInner />
+      </Provider>
+    </SafeAreaProvider>
   );
 }
 
-// ─── Styles ───
-
 const styles = StyleSheet.create({
-  loadingContainer: {
+  loading: {
     flex: 1,
-    backgroundColor: BEIGE,
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    ...(Platform.OS === 'web' ? { height: '100%', minHeight: '100vh' } : {}),
   },
-  loadingTitle: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: CAFE,
-    letterSpacing: 1,
-  },
-  loadingSubtitle: {
-    marginTop: 12,
-    fontSize: 16,
-    color: TERRACOTA,
+  wordmark: {
+    ...typography.masthead,
+    color: colors.textPrimary,
   },
 });

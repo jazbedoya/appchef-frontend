@@ -1,18 +1,14 @@
-import React, { useEffect, useState, useCallback } from 'react';
+// HomeScreen.js — Rediseño editorial "portada de revista gastronómica"
+// Conectado a Redux (datos reales del backend).
+import React, { useEffect, useCallback, useState } from 'react';
 import {
-  View,
-  Text,
-  FlatList,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  StatusBar,
-  RefreshControl,
-  Platform,
+  View, Text, ScrollView, Pressable, Image, StyleSheet,
+  RefreshControl, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { format } from 'date-fns';
 
 import {
   fetchEvents,
@@ -21,89 +17,34 @@ import {
   selectEventsError,
 } from '../store/eventsSlice';
 import { selectUser } from '../store/authSlice';
-import { getDistanceKm, formatDistance } from '../utils/geo';
-import SkeletonCard from '../components/SkeletonCard';
+import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
+import { borders } from '../theme/borders';
+import { radius } from '../theme/radius';
+import { typography } from '../theme/typography';
 
-// ─── Web font injection ───
-if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getElementById('gourmet-fonts')) {
-  const link = document.createElement('link');
-  link.id = 'gourmet-fonts';
-  link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;500;600&display=swap';
-  document.head.appendChild(link);
-}
+// ─── Helpers ───
 
-// ─── Design tokens ───
-const SERIF = Platform.OS === 'web' ? "'Cormorant Garamond', serif" : 'serif';
-const SANS  = Platform.OS === 'web' ? "'DM Sans', sans-serif" : undefined;
-const C = {
-  primary: '#2C3E2D',
-  accent:  '#D4A853',
-  surface: '#FDFAF5',
-  text:    '#1C1C1C',
-  muted:   '#7A7A6E',
-  border:  '#F0EBE0',
-  white:   '#FFFFFF',
-  coral:   '#E8593C',
+const getCuisineLabel = (event) => {
+  try {
+    const ct = typeof event.cuisine_type === 'string'
+      ? JSON.parse(event.cuisine_type)
+      : event.cuisine_type;
+    return Array.isArray(ct) ? ct[0] : ct;
+  } catch { return ''; }
 };
 
-// ─── Cuisine filter options ───
-const CUISINE_FILTERS = [
-  { id: 'all',       label: 'Todos' },
-  { id: 'Italiana',  label: 'Italiana' },
-  { id: 'Japonesa',  label: 'Japonesa' },
-  { id: 'Vegana',    label: 'Vegana' },
-  { id: 'Española',  label: 'Española' },
-];
+const getSpots = (event) => Math.max(0, (event.max_guests || 0) - (event.confirmed_guests || 0));
 
-// ─── Cuisine images map ───
-const CUISINE_IMAGES = {
-  Italiana:     'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80',
-  Japonesa:     'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=800&q=80',
-  Vegana:       'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800&q=80',
-  Española:     'https://images.unsplash.com/photo-1515443961218-a51367888e4b?w=800&q=80',
-  Mediterránea: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=800&q=80',
-  default:      'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80',
+const getSeasonLabel = () => {
+  const m = new Date().getMonth();
+  if (m < 3) return 'Invierno';
+  if (m < 6) return 'Primavera';
+  if (m < 9) return 'Verano';
+  return 'Otoño';
 };
 
-const getEventImage = (event) => {
-  if (event.cover_image_url) return event.cover_image_url;
-  const c = Array.isArray(event.cuisine_type) ? event.cuisine_type[0] : event.cuisine_type;
-  return CUISINE_IMAGES[c] || CUISINE_IMAGES.default;
-};
-
-// ─── Badge logic ───
-const getEventBadge = (event) => {
-  const available = (event.max_guests || 10) - (event.confirmed_guests || 0);
-  if (available <= 2) return { label: 'MUY CODICIADO', bg: C.accent,   color: C.text  };
-  if (available <= 5) return { label: 'POCAS PLAZAS',  bg: C.coral,    color: C.white };
-  const cuisine = Array.isArray(event.cuisine_type) ? event.cuisine_type[0] : event.cuisine_type;
-  return { label: cuisine || 'EXCLUSIVO', bg: C.primary, color: C.white };
-};
-
-// ─── Error banner ───
-const ErrorBanner = ({ message, onRetry }) => (
-  <View style={s.errorContainer}>
-    <Text style={s.errorTitle}>Algo salió mal</Text>
-    <Text style={s.errorMessage}>{message}</Text>
-    <TouchableOpacity style={s.retryButton} onPress={onRetry} activeOpacity={0.85}>
-      <Text style={s.retryButtonText}>Reintentar</Text>
-    </TouchableOpacity>
-  </View>
-);
-
-// ─── Empty state ───
-const EmptyState = ({ onClear }) => (
-  <View style={s.emptyContainer}>
-    <Text style={s.emptyTitle}>Sin resultados</Text>
-    <Text style={s.emptySubtitle}>Prueba con otra ciudad o cambia los filtros</Text>
-    <TouchableOpacity style={s.emptyButton} onPress={onClear} activeOpacity={0.85}>
-      <Text style={s.emptyButtonText}>Limpiar filtros</Text>
-    </TouchableOpacity>
-  </View>
-);
-
-// ─── Main Screen ───
+// ─── Component ───
 
 const HomeScreen = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -111,512 +52,268 @@ const HomeScreen = ({ navigation }) => {
   const events = useSelector(selectEvents);
   const isLoading = useSelector(selectEventsLoading);
   const error = useSelector(selectEventsError);
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCuisine, setSelectedCuisine] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
-  const [userLocation, setUserLocation] = useState(null);
 
   const loadEvents = useCallback(() => {
-    const filters = {
-      page: 1,
-      perPage: 30,
-      ...(selectedCuisine !== 'all' && { cuisineType: selectedCuisine }),
-      ...(searchQuery.trim() && { city: searchQuery.trim() }),
-    };
-    dispatch(fetchEvents(filters));
-  }, [dispatch, selectedCuisine, searchQuery]);
+    dispatch(fetchEvents({ page: 1, perPage: 30 }));
+  }, [dispatch]);
 
-  useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
-
-  useEffect(() => {
-    if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-      const stored = localStorage.getItem('userLocation');
-      if (stored) {
-        try { setUserLocation(JSON.parse(stored)); } catch (_) {}
-      }
-    }
-    if (Platform.OS === 'web' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setUserLocation(loc);
-          if (typeof localStorage !== 'undefined') {
-            localStorage.setItem('userLocation', JSON.stringify(loc));
-          }
-        },
-        () => {}
-      );
-    }
-  }, []);
-
-  const getDistanceText = useCallback((event) => {
-    if (!userLocation || !event.latitude || !event.longitude) return null;
-    const km = getDistanceKm(userLocation.lat, userLocation.lng, parseFloat(event.latitude), parseFloat(event.longitude));
-    return formatDistance(km);
-  }, [userLocation]);
+  useEffect(() => { loadEvents(); }, [loadEvents]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await dispatch(fetchEvents({
-      page: 1,
-      perPage: 30,
-      ...(selectedCuisine !== 'all' && { cuisineType: selectedCuisine }),
-      ...(searchQuery.trim() && { city: searchQuery.trim() }),
-    }));
+    await dispatch(fetchEvents({ page: 1, perPage: 30 }));
     setRefreshing(false);
-  }, [dispatch, selectedCuisine, searchQuery]);
+  }, [dispatch]);
 
-  const handleEventPress = useCallback((event) => {
-    navigation.navigate('EventDetail', {
-      eventId: event.id,
-      eventTitle: event.title,
-    });
-  }, [navigation]);
+  const featured = events[0] || null;
+  const cartelera = events.slice(1, 5);
 
-  const handleClearFilters = useCallback(() => {
-    setSearchQuery('');
-    setSelectedCuisine('all');
-  }, []);
-
-  const ListHeader = (
-    <View>
-      {/* ── SECTION 1: Hero header ── */}
-      <View style={s.hero}>
-        <Text style={s.heroBrand}>App Chef</Text>
-        <Text style={s.heroHeadline}>{'Encuentra tu lugar\nen la mesa invisible.'}</Text>
-
-        {/* Search input */}
-        <TextInput
-          style={s.searchInput}
-          placeholder="🔍  Busca por ciudad o anfitrión..."
-          placeholderTextColor={C.muted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onSubmitEditing={loadEvents}
-          returnKeyType="search"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-
-        {/* User location */}
-        {userLocation && (
-          <Text style={s.locationText}>Ubicación detectada</Text>
-        )}
-      </View>
-
-      {/* ── SECTION 2: Category filters ── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={s.filterScroll}
-        contentContainerStyle={s.filterContent}
-      >
-        {CUISINE_FILTERS.map(filter => {
-          const active = selectedCuisine === filter.id;
-          return (
-            <TouchableOpacity
-              key={filter.id}
-              style={[s.filterPill, active && s.filterPillActive]}
-              onPress={() => setSelectedCuisine(filter.id)}
-              activeOpacity={0.75}
-            >
-              <Text style={[s.filterPillText, active && s.filterPillTextActive]}>
-                {filter.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* ── SECTION 3 header: Experiencias Destacadas ── */}
-      <View style={s.sectionHeaderRow}>
-        <Text style={s.sectionTitle}>Experiencias Destacadas</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Map')} activeOpacity={0.8}>
-          <Text style={s.sectionLink}>VER TODAS →</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  // ── Loading state (first load, not refresh) ──
-  if (isLoading && events.length === 0 && !refreshing) {
+  if (isLoading && events.length === 0) {
     return (
-      <View style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor={C.surface} />
-        <View style={{ paddingTop: Platform.OS === 'ios' ? 54 : 32 }}>
-          {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.loadingWrap}>
+          <Text style={styles.wordmark}>APP CHEF</Text>
+          <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.xl }} />
         </View>
-      </View>
-    );
-  }
-
-  // ── Error state (no events loaded yet) ──
-  if (error && events.length === 0) {
-    return (
-      <View style={s.container}>
-        <StatusBar barStyle="dark-content" backgroundColor={C.surface} />
-        <ErrorBanner message={error} onRetry={loadEvents} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={s.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.surface} />
-      <FlatList
-        data={events}
-        keyExtractor={item => String(item.id)}
-        renderItem={({ item, index }) => {
-          const badge = getEventBadge(item);
-          return (
-            <View style={s.cardWrapper}>
-              <View style={[s.heroCard, index === 0 && s.heroCardLarge]}>
-                {/* Background image */}
-                <View style={[StyleSheet.absoluteFill, { borderRadius: 16, overflow: 'hidden' }]}>
-                  {Platform.OS === 'web' ? (
-                    <div style={{
-                      width: '100%',
-                      height: '100%',
-                      backgroundImage: `url(${getEventImage(item)})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                    }} />
-                  ) : (
-                    <View style={{ flex: 1, backgroundColor: C.primary }} />
-                  )}
-                </View>
-
-                {/* Gradient overlay */}
-                <LinearGradient
-                  colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.75)']}
-                  style={StyleSheet.absoluteFill}
-                />
-
-                {/* Card content */}
-                <View style={s.heroContent}>
-                  {/* Badge top-left */}
-                  <View style={[s.heroBadge, { backgroundColor: badge.bg }]}>
-                    <Text style={[s.heroBadgeText, { color: badge.color }]}>{badge.label}</Text>
-                  </View>
-
-                  {/* Bottom content */}
-                  <View style={s.heroBottom}>
-                    <Text style={s.heroTitle} numberOfLines={2}>{item.title}</Text>
-                    {index === 0 && item.description && (
-                      <Text style={s.heroDesc} numberOfLines={2}>{item.description}</Text>
-                    )}
-                    <View style={s.heroActions}>
-                      <TouchableOpacity
-                        style={s.heroBtn}
-                        onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
-                      >
-                        <Text style={s.heroBtnText}>Solicitar Invitación</Text>
-                      </TouchableOpacity>
-                      <Text style={s.heroPrice}>€{parseFloat(item.price_per_person || 0).toFixed(0)} /persona</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            </View>
-          );
-        }}
-        ListHeaderComponent={ListHeader}
-        ListEmptyComponent={
-          !isLoading ? <EmptyState onClear={handleClearFilters} /> : null
-        }
-        contentContainerStyle={s.listContent}
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={C.primary}
-            colors={[C.primary]}
-          />
-        }
-      />
-
-      {/* FAB — create event */}
-      <TouchableOpacity
-        style={s.fab}
-        onPress={() => navigation.navigate('CreateEvent')}
-        activeOpacity={0.85}
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
-        <Text style={s.fabText}>+</Text>
-      </TouchableOpacity>
-    </View>
+        {/* ── Masthead ── */}
+        <View style={styles.masthead}>
+          <View style={styles.mastheadMeta}>
+            <Text style={styles.metaLabel}>
+              N.º {format(new Date(), 'MM')} · {getSeasonLabel()}
+            </Text>
+            <Text style={styles.metaLabel}>
+              {user?.username ? user.username.toUpperCase() : ''}
+            </Text>
+          </View>
+          <View style={styles.rule} />
+          <Text style={styles.wordmark}>APP CHEF</Text>
+          <View style={styles.rule} />
+          <Text style={[styles.metaLabel, styles.centered]}>
+            Cenas privadas por invitación
+          </Text>
+        </View>
+
+        {/* ── Portada: evento destacado ── */}
+        {featured && (
+          <>
+            <Pressable
+              style={styles.cover}
+              onPress={() => navigation.navigate('EventDetail', { eventId: featured.id })}
+            >
+              <Text style={styles.overline}>
+                {getCuisineLabel(featured)} · {featured.city}
+              </Text>
+              <Text style={styles.coverTitle}>{featured.title}</Text>
+              <Text style={styles.standfirst} numberOfLines={3}>
+                {featured.description}
+              </Text>
+            </Pressable>
+
+            {featured.cover_image_url ? (
+              <Image
+                source={{ uri: featured.cover_image_url }}
+                style={styles.coverImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.coverImage, { backgroundColor: colors.imagePlaceholder }]} />
+            )}
+
+            <View style={styles.coverFooter}>
+              <Text style={styles.priceLabel}>
+                €{Number(featured.price_per_person).toFixed(0)} · {getSpots(featured)} PLAZAS
+              </Text>
+              <Pressable onPress={() => navigation.navigate('EventDetail', { eventId: featured.id })}>
+                <Text style={styles.linkAccent}>SOLICITAR SITIO →</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+
+        {/* ── Crear cena ── */}
+        <View style={styles.createBlock}>
+          <View style={styles.createCopy}>
+            <Text style={styles.createTitle}>¿Anfitrión?</Text>
+            <Text style={styles.createSub}>Abre tu mesa e invita comensales.</Text>
+          </View>
+          <Pressable
+            style={styles.createBtn}
+            onPress={() => navigation.navigate('CreateEvent')}
+          >
+            <Text style={styles.createBtnText}>Crear cena +</Text>
+          </Pressable>
+        </View>
+
+        {/* ── En cartelera ── */}
+        {cartelera.length > 0 && (
+          <>
+            <View style={styles.ruleFull} />
+            <Text style={styles.sectionLabel}>En cartelera</Text>
+            <View style={styles.list}>
+              {cartelera.map((event, i) => (
+                <Pressable
+                  key={event.id}
+                  style={styles.row}
+                  onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
+                >
+                  <Text style={styles.rowNum}>
+                    {String(i + 2).padStart(2, '0')}
+                  </Text>
+                  <View style={styles.rowBody}>
+                    <Text style={styles.rowTitle}>{event.title}</Text>
+                    <Text style={styles.rowMeta}>
+                      {getCuisineLabel(event)} · {event.city} · {getSpots(event)} plazas
+                    </Text>
+                  </View>
+                  <Text style={styles.rowPrice}>
+                    €{Number(event.price_per_person).toFixed(0)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* ── Error ── */}
+        {error && events.length === 0 && (
+          <View style={styles.errorBlock}>
+            <Text style={styles.standfirst}>No pudimos cargar las cenas.</Text>
+            <Pressable onPress={loadEvents}>
+              <Text style={styles.linkAccent}>REINTENTAR →</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* ── Vacío ── */}
+        {!isLoading && !error && events.length === 0 && (
+          <View style={styles.errorBlock}>
+            <Text style={styles.coverTitle}>Aún no hay cenas</Text>
+            <Text style={styles.standfirst}>
+              Sé el primero en abrir tu mesa.
+            </Text>
+            <Pressable
+              style={[styles.createBtn, { marginTop: spacing.md }]}
+              onPress={() => navigation.navigate('CreateEvent')}
+            >
+              <Text style={styles.createBtnText}>Crear cena +</Text>
+            </Pressable>
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
-const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: C.surface,
-  },
+export default HomeScreen;
 
-  // ── Hero header ──
-  hero: {
-    backgroundColor: C.surface,
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 24,
-  },
-  heroBrand: {
-    fontFamily: SERIF,
-    fontSize: 18,
-    fontStyle: 'italic',
-    color: C.primary,
-    marginBottom: 8,
-  },
-  heroHeadline: {
-    fontFamily: SERIF,
-    fontSize: 36,
-    fontWeight: '600',
-    color: C.text,
-    lineHeight: 42,
-    marginBottom: 20,
-  },
-  searchInput: {
-    backgroundColor: C.border,
-    borderRadius: 30,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontFamily: SANS,
-    fontSize: 14,
-    color: C.text,
-  },
-  locationText: {
-    fontFamily: SANS,
-    fontSize: 12,
-    color: C.muted,
-    marginTop: 8,
-  },
+// ─── Styles ───
 
-  // ── Filters ──
-  filterScroll: {
-    marginTop: 4,
-  },
-  filterContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    gap: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  filterPill: {
-    backgroundColor: 'transparent',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  filterPillActive: {
-    backgroundColor: C.primary,
-  },
-  filterPillText: {
-    fontFamily: SANS,
-    fontSize: 13,
-    fontWeight: '500',
-    color: C.muted,
-  },
-  filterPillTextActive: {
-    color: C.white,
-  },
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.background },
+  scroll: { paddingBottom: spacing.xxxl + spacing.xxl },
+  loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // ── Section header ──
-  sectionHeaderRow: {
+  // Masthead
+  masthead: { paddingHorizontal: spacing.gutter, paddingTop: spacing.md, paddingBottom: spacing.sm },
+  mastheadMeta: { flexDirection: 'row', justifyContent: 'space-between' },
+  metaLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 1.4 },
+  centered: { textAlign: 'center' },
+  rule: { height: borders.hairline, backgroundColor: colors.border, marginVertical: spacing.xs },
+  wordmark: { ...typography.masthead, color: colors.textPrimary, textAlign: 'center' },
+
+  // Cover
+  cover: { paddingHorizontal: spacing.gutter, paddingTop: spacing.lg },
+  overline: { ...typography.label, color: colors.accent, letterSpacing: 1.8, marginBottom: spacing.sm },
+  coverTitle: { ...typography.coverTitle, color: colors.textPrimary, marginBottom: spacing.sm },
+  standfirst: { ...typography.standfirst, color: colors.textSecondary },
+  coverImage: {
+    marginHorizontal: spacing.gutter,
+    marginTop: spacing.md,
+    height: 220,
+    borderRadius: radius.xs,
+    backgroundColor: colors.imagePlaceholder,
+  },
+  coverFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 12,
+    alignItems: 'baseline',
+    paddingHorizontal: spacing.gutter,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
-  sectionTitle: {
-    fontFamily: SERIF,
-    fontSize: 20,
-    color: C.text,
-  },
-  sectionLink: {
-    fontFamily: SANS,
-    fontSize: 11,
-    color: C.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  priceLabel: { ...typography.price, color: colors.textMuted, letterSpacing: 1 },
+  linkAccent: {
+    ...typography.price,
+    color: colors.textPrimary,
+    borderBottomWidth: borders.medium,
+    borderBottomColor: colors.accent,
+    paddingBottom: spacing.xxs / 2,
   },
 
-  // ── Hero event cards ──
-  cardWrapper: {
-    paddingHorizontal: 20,
-  },
-  heroCard: {
-    height: 200,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 12,
-    position: 'relative',
-    justifyContent: 'space-between',
-  },
-  heroCardLarge: {
-    height: 320,
-  },
-  heroContent: {
-    flex: 1,
-    padding: 16,
-    justifyContent: 'space-between',
-  },
-  heroBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 20,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  heroBadgeText: {
-    fontFamily: SANS,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  heroBottom: {
-    gap: 8,
-  },
-  heroTitle: {
-    fontFamily: SERIF,
-    fontSize: 22,
-    fontWeight: '600',
-    color: C.white,
-    lineHeight: 26,
-  },
-  heroDesc: {
-    fontFamily: SANS,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-    lineHeight: 18,
-  },
-  heroActions: {
+  // Create block
+  createBlock: {
+    marginHorizontal: spacing.gutter,
+    marginBottom: spacing.lg,
+    borderWidth: borders.medium,
+    borderColor: colors.border,
+    padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.md,
   },
-  heroBtn: {
-    backgroundColor: C.white,
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+  createCopy: { flex: 1 },
+  createTitle: { ...typography.dinnerTitle, fontSize: 20, color: colors.textPrimary, marginBottom: spacing.xxs },
+  createSub: { ...typography.body, color: colors.textMuted },
+  createBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
   },
-  heroBtnText: {
-    fontFamily: SANS,
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.text,
-  },
-  heroPrice: {
-    fontFamily: SANS,
-    fontSize: 15,
-    fontWeight: '600',
-    color: C.accent,
-  },
+  createBtnText: { ...typography.button, color: colors.onAccent },
 
-  // ── FAB ──
-  fab: {
-    position: 'absolute',
-    bottom: 90,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#2C3E2D',
+  // Cartelera
+  ruleFull: { height: borders.hairline, backgroundColor: colors.border, marginHorizontal: spacing.gutter },
+  sectionLabel: {
+    ...typography.label,
+    color: colors.textMuted,
+    letterSpacing: 2,
+    paddingHorizontal: spacing.gutter,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  list: { paddingHorizontal: spacing.gutter },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: borders.hairline,
+    borderTopColor: colors.borderHairline,
+  },
+  rowNum: { ...typography.dinnerTitle, fontSize: 15, color: colors.accent, width: spacing.xl },
+  rowBody: { flex: 1 },
+  rowTitle: { ...typography.dinnerTitle, fontSize: 19, color: colors.textPrimary },
+  rowMeta: { ...typography.body, fontSize: 12, color: colors.textMuted, marginTop: spacing.xxs / 2 },
+  rowPrice: { ...typography.price, color: colors.textMuted },
+
+  // Error/empty
+  errorBlock: {
+    paddingHorizontal: spacing.gutter,
+    paddingVertical: spacing.xxl,
     alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 100,
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0 4px 16px rgba(44,62,45,0.4)' }
-      : { shadowColor: '#2C3E2D', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8 }),
-  },
-  fabText: {
-    color: '#D4A853',
-    fontSize: 28,
-    fontWeight: '300',
-    lineHeight: 32,
-  },
-
-  // ── List ──
-  listContent: {
-    paddingBottom: 100,
-  },
-
-  // ── Error state ──
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  errorTitle: {
-    fontFamily: SERIF,
-    fontSize: 22,
-    fontWeight: '600',
-    color: C.primary,
-    marginBottom: 8,
-  },
-  errorMessage: {
-    fontFamily: SANS,
-    fontSize: 14,
-    color: C.muted,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: C.primary,
-    borderRadius: 9999,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-  },
-  retryButtonText: {
-    fontFamily: SANS,
-    color: C.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // ── Empty state ──
-  emptyContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-    paddingTop: 48,
-  },
-  emptyTitle: {
-    fontFamily: SERIF,
-    fontSize: 22,
-    fontWeight: '600',
-    color: C.primary,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontFamily: SANS,
-    fontSize: 14,
-    color: C.muted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  emptyButton: {
-    marginTop: 20,
-    backgroundColor: C.primary,
-    borderRadius: 9999,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-  },
-  emptyButtonText: {
-    fontFamily: SANS,
-    color: C.white,
-    fontSize: 14,
-    fontWeight: '600',
+    gap: spacing.md,
   },
 });
-
-export default HomeScreen;

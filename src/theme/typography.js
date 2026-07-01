@@ -1,42 +1,54 @@
-import { Platform } from 'react-native';
-import colors from './colors';
+// src/theme/typography.js
+// -----------------------------------------------------------------------------
+// Dos personalidades: SERIF de portada (Newsreader) para masthead/titulares y
+// SANS (Hanken Grotesk) para cuerpo, más un MONO (Space Mono) para versalitas,
+// precios y botones.
+//
+// Fuentes @expo-google-fonts a instalar:
+//   expo install @expo-google-fonts/newsreader \
+//                @expo-google-fonts/hanken-grotesk \
+//                @expo-google-fonts/space-mono expo-font
+//
+// Carga con useFonts (ver App.js). Con fuentes de Google en RN, la variante de
+// peso ES la familia (p. ej. 'Newsreader_500Medium'); el fontWeight se deja como
+// referencia pero la familia es la que manda.
+// -----------------------------------------------------------------------------
 
-const fontFamily = {
-  display: Platform.select({ ios: 'Georgia', android: 'serif', web: '"Cormorant Garamond", Georgia, serif' }),
-  displayBold: Platform.select({ ios: 'Georgia-Bold', android: 'serif', web: '"Cormorant Garamond", Georgia, serif' }),
-  sansRegular: Platform.select({ ios: 'System', android: 'sans-serif', web: '"DM Sans", "Helvetica Neue", sans-serif' }),
-  sansMedium: Platform.select({ ios: 'System', android: 'sans-serif-medium', web: '"DM Sans", "Helvetica Neue", sans-serif' }),
-  sansBold: Platform.select({ ios: 'System', android: 'sans-serif-bold', web: '"DM Sans", "Helvetica Neue", sans-serif' }),
-  mono: Platform.select({ ios: 'Courier New', android: 'monospace', web: 'monospace' }),
+export const fonts = {
+  serif: 'Newsreader_400Regular',
+  serifMedium: 'Newsreader_500Medium',
+  serifItalic: 'Newsreader_400Regular_Italic',
+  sans: 'HankenGrotesk_400Regular',
+  sansMedium: 'HankenGrotesk_500Medium',
+  sansSemiBold: 'HankenGrotesk_600SemiBold',
+  mono: 'SpaceMono_400Regular',
+  monoBold: 'SpaceMono_700Bold',
 };
 
+// Estilos de texto listos para hacer spread: { ...typography.dinnerTitle }
 export const typography = {
-  displayLarge: { fontFamily: fontFamily.displayBold, fontSize: 40, fontWeight: '700', lineHeight: 50, color: colors.primary, letterSpacing: -0.5 },
-  displayMedium: { fontFamily: fontFamily.displayBold, fontSize: 32, fontWeight: '700', lineHeight: 40, color: colors.primary, letterSpacing: -0.3 },
-  displaySmall: { fontFamily: fontFamily.displayBold, fontSize: 26, fontWeight: '700', lineHeight: 34, color: colors.primary },
-
-  h1: { fontFamily: fontFamily.displayBold, fontSize: 22, fontWeight: '700', lineHeight: 30, color: colors.text },
-  h2: { fontFamily: fontFamily.displayBold, fontSize: 18, fontWeight: '700', lineHeight: 26, color: colors.text },
-  h3: { fontFamily: fontFamily.sansMedium, fontSize: 16, fontWeight: '600', lineHeight: 24, color: colors.text },
-
-  bodyLarge: { fontFamily: fontFamily.sansRegular, fontSize: 16, fontWeight: '400', lineHeight: 26, color: colors.gray700 },
-  body: { fontFamily: fontFamily.sansRegular, fontSize: 14, fontWeight: '400', lineHeight: 22, color: colors.gray700 },
-  bodySmall: { fontFamily: fontFamily.sansRegular, fontSize: 12, fontWeight: '400', lineHeight: 18, color: colors.textMuted },
-
-  labelLarge: { fontFamily: fontFamily.sansMedium, fontSize: 14, fontWeight: '600', lineHeight: 20, color: colors.gray700, letterSpacing: 0.1 },
-  label: { fontFamily: fontFamily.sansMedium, fontSize: 13, fontWeight: '500', lineHeight: 18, color: colors.primary, letterSpacing: 0.3 },
-  labelSmall: { fontFamily: fontFamily.sansMedium, fontSize: 10, fontWeight: '600', lineHeight: 16, color: colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' },
-
-  price: { fontFamily: fontFamily.displayBold, fontSize: 18, fontWeight: '700', color: colors.primary, lineHeight: 24 },
-  priceLarge: { fontFamily: fontFamily.displayBold, fontSize: 26, fontWeight: '700', color: colors.primary, lineHeight: 32 },
-
-  buttonLarge: { fontFamily: fontFamily.sansBold, fontSize: 16, fontWeight: '600', lineHeight: 24, letterSpacing: 1, textTransform: 'uppercase' },
-  button: { fontFamily: fontFamily.sansBold, fontSize: 14, fontWeight: '600', lineHeight: 20, letterSpacing: 1, textTransform: 'uppercase' },
-  buttonSmall: { fontFamily: fontFamily.sansBold, fontSize: 12, fontWeight: '600', lineHeight: 18, letterSpacing: 0.5 },
-
-  caption: { fontFamily: fontFamily.sansRegular, fontSize: 11, fontWeight: '400', lineHeight: 16, color: colors.textMuted },
-  overline: { fontFamily: fontFamily.sansMedium, fontSize: 10, fontWeight: '600', lineHeight: 16, letterSpacing: 1.5, textTransform: 'uppercase', color: colors.accent },
-  link: { fontFamily: fontFamily.sansMedium, fontSize: 14, fontWeight: '500', lineHeight: 22, color: colors.accent, textDecorationLine: 'underline' },
+  // Wordmark del masthead — "APP CHEF"
+  masthead: { fontFamily: fonts.serifMedium, fontWeight: '500', fontSize: 27, lineHeight: 32, letterSpacing: 10 },
+  // Titular de portada / nombre gigante
+  coverTitle: { fontFamily: fonts.serif, fontWeight: '400', fontSize: 42, lineHeight: 41, letterSpacing: -0.8 },
+  // Título de sección grande (Mensajes)
+  sectionTitle: { fontFamily: fonts.serif, fontWeight: '400', fontSize: 40, lineHeight: 42, letterSpacing: -0.6 },
+  // Título de sección medio ("3 cenas cerca de ti")
+  sectionTitleSm: { fontFamily: fonts.serif, fontWeight: '400', fontSize: 26, lineHeight: 29, letterSpacing: -0.3 },
+  // Título de una cena en lista / conversación
+  dinnerTitle: { fontFamily: fonts.serif, fontWeight: '400', fontSize: 18, lineHeight: 21, letterSpacing: 0 },
+  // Standfirst en serif itálica
+  standfirst: { fontFamily: fonts.serifItalic, fontWeight: '400', fontStyle: 'italic', fontSize: 16, lineHeight: 22, letterSpacing: 0 },
+  // Cuerpo
+  body: { fontFamily: fonts.sans, fontWeight: '400', fontSize: 13, lineHeight: 20, letterSpacing: 0 },
+  bodyLg: { fontFamily: fonts.sans, fontWeight: '400', fontSize: 15, lineHeight: 22, letterSpacing: 0 },
+  // Versalitas / labels
+  label: { fontFamily: fonts.mono, fontWeight: '400', fontSize: 10, lineHeight: 14, letterSpacing: 2, textTransform: 'uppercase' },
+  labelSm: { fontFamily: fonts.monoBold, fontWeight: '600', fontSize: 8, lineHeight: 11, letterSpacing: 1.2, textTransform: 'uppercase' },
+  // Precio / metadatos numéricos
+  price: { fontFamily: fonts.mono, fontWeight: '400', fontSize: 11, lineHeight: 15, letterSpacing: 0 },
+  // Botón (mono versalitas)
+  button: { fontFamily: fonts.monoBold, fontWeight: '600', fontSize: 10, lineHeight: 14, letterSpacing: 1.2, textTransform: 'uppercase' },
+  // Hora del status bar / texto de sistema
+  systemStrong: { fontFamily: fonts.sansSemiBold, fontWeight: '600', fontSize: 16, lineHeight: 20, letterSpacing: 0 },
 };
-
-export default typography;
