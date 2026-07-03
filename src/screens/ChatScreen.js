@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/core';
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Alert,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Alert, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
@@ -239,7 +239,7 @@ export default function ChatScreen({ route, navigation }) {
 
         {/* ── Members Modal ── */}
         <Modal visible={membersVisible} animationType="slide" onRequestClose={() => setMembersVisible(false)}>
-          <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
+          <View style={st.modalContainer}>
             {/* Header with close */}
             <View style={st.membersTopBar}>
               <Pressable onPress={() => setMembersVisible(false)} hitSlop={16} style={st.membersCloseBtn}>
@@ -269,9 +269,8 @@ export default function ChatScreen({ route, navigation }) {
                     onPress={() => {
                       if (!isMe) {
                         setMembersVisible(false);
-                        navigation.navigate('Inicio', {
-                          screen: 'ChefProfile',
-                          params: { userId: item.user_id, userName: displayName },
+                        navigation.navigate('ChefProfile', {
+                          userId: item.user_id, userName: displayName,
                         });
                       }
                     }}
@@ -311,7 +310,7 @@ export default function ChatScreen({ route, navigation }) {
                 );
               }}
             />
-          </SafeAreaView>
+          </View>
         </Modal>
       </SafeAreaView>
     );
@@ -429,12 +428,16 @@ const st = StyleSheet.create({
   },
 
   // Members modal
+  modalContainer: {
+    flex: 1, backgroundColor: colors.background,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + spacing.xs : spacing.xxxl,
+  },
   membersTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.gutter,
-    paddingTop: spacing.md,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.md,
   },
   membersCloseBtn: {

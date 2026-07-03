@@ -1,12 +1,13 @@
 // ProfileScreen.js — Perfil propio con bloque de confianza, rating, reseñas
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, Pressable,
-  Alert, Modal, TextInput, ActivityIndicator, Platform,
+  View, Text, ScrollView, StyleSheet, Pressable, Image,
+  Alert, Modal, TextInput, ActivityIndicator, Platform, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 
 import { selectUser, selectIsHost, logoutUser } from '../store/authSlice';
 import {
@@ -54,6 +55,7 @@ export default function ProfileScreen({ navigation }) {
   const [actioningId, setActioningId] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [reviewMeta, setReviewMeta] = useState({ total: 0, average_rating: null });
+  const [editAvatar, setEditAvatar] = useState(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -120,12 +122,40 @@ export default function ProfileScreen({ navigation }) {
   const openEdit = () => {
     setEditName(user?.profile?.first_name || user?.username || '');
     setEditBio(user?.profile?.bio || '');
+    setEditAvatar(user?.profile?.avatar_url || null);
     setEditModal(true);
   };
+
+  const pickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permiso necesario', 'Necesitamos acceso a tu galería para elegir una foto.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      const asset = result.assets[0];
+      const uri = asset.base64
+        ? `data:image/jpeg;base64,${asset.base64}`
+        : asset.uri;
+      setEditAvatar(uri);
+    }
+  };
+
   const saveEdit = async () => {
     setSaving(true);
     try {
-      await userApi.put(`/users/${user.id}`, { first_name: editName.trim(), bio: editBio.trim() });
+      const payload = { first_name: editName.trim(), bio: editBio.trim() };
+      if (editAvatar && editAvatar !== user?.profile?.avatar_url) {
+        payload.avatar_url = editAvatar;
+      }
+      await userApi.put(`/users/${user.id}`, payload);
       setEditModal(false);
     } catch { Alert.alert('Error', 'No se pudo guardar'); }
     setSaving(false);
@@ -157,9 +187,13 @@ export default function ProfileScreen({ navigation }) {
 
         {/* ── Identity ── */}
         <View style={s.identity}>
-          <View style={s.avatar}>
-            <Text style={s.avatarLetter}>{initials}</Text>
-          </View>
+          {user?.profile?.avatar_url ? (
+            <Image source={{ uri: user.profile.avatar_url }} style={s.avatarImg} />
+          ) : (
+            <View style={s.avatar}>
+              <Text style={s.avatarLetter}>{initials}</Text>
+            </View>
+          )}
           <View style={s.identityInfo}>
             <Text style={s.name}>{displayName}</Text>
             <Text style={s.email}>{user?.email}</Text>
@@ -354,7 +388,7 @@ export default function ProfileScreen({ navigation }) {
 
       {/* ── Edit modal ── */}
       <Modal visible={editModal} animationType="slide" onRequestClose={() => setEditModal(false)}>
-        <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.modalContainer}>
           <View style={s.modalHeader}>
             <Pressable onPress={() => setEditModal(false)} hitSlop={12}>
               <Ionicons name="close" size={22} color={colors.textPrimary} />
@@ -368,6 +402,21 @@ export default function ProfileScreen({ navigation }) {
           </View>
           <View style={s.ruleNoMargin} />
           <View style={s.modalBody}>
+            {/* Avatar picker */}
+            <Pressable style={s.avatarPicker} onPress={pickAvatar}>
+              {editAvatar ? (
+                <Image source={{ uri: editAvatar }} style={s.avatarPickerImg} />
+              ) : (
+                <View style={s.avatarPickerPlaceholder}>
+                  <Ionicons name="camera-outline" size={28} color={colors.textMuted} />
+                </View>
+              )}
+              <View style={s.avatarPickerOverlay}>
+                <Ionicons name="camera" size={14} color={colors.onAccent} />
+              </View>
+            </Pressable>
+            <Text style={s.avatarPickerHint}>Toca para cambiar foto</Text>
+
             <Text style={s.fieldLabel}>NOMBRE</Text>
             <TextInput style={s.field} value={editName} onChangeText={setEditName}
               placeholder="Tu nombre" placeholderTextColor={colors.textMuted} />
@@ -376,7 +425,7 @@ export default function ProfileScreen({ navigation }) {
               value={editBio} onChangeText={setEditBio}
               placeholder="Cuéntanos sobre ti..." placeholderTextColor={colors.textMuted} multiline />
           </View>
-        </SafeAreaView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -405,6 +454,9 @@ const s = StyleSheet.create({
   avatar: {
     width: 56, height: 56, borderRadius: radius.pill,
     backgroundColor: colors.textPrimary, alignItems: 'center', justifyContent: 'center',
+  },
+  avatarImg: {
+    width: 56, height: 56, borderRadius: radius.pill,
   },
   avatarLetter: { ...typography.dinnerTitle, color: colors.onAccent, fontSize: 22 },
   identityInfo: { flex: 1 },
@@ -508,10 +560,35 @@ const s = StyleSheet.create({
   logoutRow: { paddingHorizontal: spacing.gutter, paddingVertical: spacing.md, marginTop: spacing.sm },
   logoutText: { ...typography.label, color: colors.accent, letterSpacing: 2 },
 
+  // Avatar picker
+  avatarPicker: {
+    alignSelf: 'center', marginTop: spacing.md, position: 'relative',
+  },
+  avatarPickerImg: {
+    width: 80, height: 80, borderRadius: radius.pill,
+  },
+  avatarPickerPlaceholder: {
+    width: 80, height: 80, borderRadius: radius.pill,
+    backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center',
+    borderWidth: borders.medium, borderColor: colors.borderHairline, borderStyle: 'dashed',
+  },
+  avatarPickerOverlay: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 26, height: 26, borderRadius: radius.pill,
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+  },
+  avatarPickerHint: {
+    ...typography.price, color: colors.textMuted, textAlign: 'center', marginTop: spacing.xs, fontSize: 11,
+  },
+
   // Modal
+  modalContainer: {
+    flex: 1, backgroundColor: colors.background,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + spacing.xs : spacing.xxxl,
+  },
   modalHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.gutter, paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.gutter, paddingBottom: spacing.sm,
   },
   modalTitle: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 18 },
   modalSave: { ...typography.button, color: colors.accent },

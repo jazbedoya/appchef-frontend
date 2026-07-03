@@ -109,6 +109,11 @@ const ChatStack = () => (
       component={ChatScreen}
       options={{ headerShown: false }}
     />
+    <Stack.Screen
+      name="ChefProfile"
+      component={ChefProfileScreen}
+      options={{ headerShown: false }}
+    />
   </Stack.Navigator>
 );
 

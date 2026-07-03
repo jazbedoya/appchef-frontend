@@ -1,7 +1,7 @@
 // ChefProfileScreen.js — Perfil público con bloque de confianza, rating y reseñas
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Alert,
+  View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Alert, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -91,9 +91,13 @@ export default function ChefProfileScreen({ route, navigation }) {
 
         {/* ── Avatar + Name ── */}
         <View style={s.heroSection}>
-          <View style={s.avatar}>
-            <Text style={s.avatarText}>{initials}</Text>
-          </View>
+          {p?.avatar_url ? (
+            <Image source={{ uri: p.avatar_url }} style={s.avatarImg} />
+          ) : (
+            <View style={s.avatar}>
+              <Text style={s.avatarText}>{initials}</Text>
+            </View>
+          )}
           <Text style={s.name}>{displayName}</Text>
           {p?.is_host && <Text style={s.hostBadge}>ANFITRIÓN</Text>}
           {p?.city && (
@@ -241,6 +245,9 @@ const s = StyleSheet.create({
     width: 72, height: 72, borderRadius: radius.pill,
     backgroundColor: colors.textPrimary, alignItems: 'center', justifyContent: 'center',
     marginBottom: spacing.sm,
+  },
+  avatarImg: {
+    width: 72, height: 72, borderRadius: radius.pill, marginBottom: spacing.sm,
   },
   avatarText: { ...typography.sectionTitleSm, color: colors.onAccent },
   name: { ...typography.sectionTitleSm, color: colors.textPrimary, textAlign: 'center' },
