@@ -68,6 +68,30 @@ const eventsService = {
     const response = await reservationApi.put(`/reservations/${reservationId}/reject`);
     return response.data;
   },
+
+  // Reviews (via user-service)
+  async getUserReviews(userId, { page = 1, perPage = 10 } = {}) {
+    const { userApi } = await import('./api');
+    const response = await userApi.get(`/reviews/user/${userId}`, { params: { page, per_page: perPage } });
+    return response.data;
+  },
+
+  async getUserRating(userId) {
+    const { userApi } = await import('./api');
+    const response = await userApi.get(`/reviews/user/${userId}/rating`);
+    return response.data;
+  },
+
+  async createReview({ revieweeId, eventId, rating, comment }) {
+    const { userApi } = await import('./api');
+    const response = await userApi.post('/reviews', {
+      reviewee_id: revieweeId,
+      event_id: eventId,
+      rating,
+      comment,
+    });
+    return response.data;
+  },
 };
 
 export default eventsService;

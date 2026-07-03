@@ -1,4 +1,4 @@
-// ProfileScreen.js — Rediseño editorial: perfil del usuario
+// ProfileScreen.js — Perfil propio con bloque de confianza, rating, reseñas
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Pressable,
@@ -15,35 +15,26 @@ import {
   approveReservation, rejectReservation,
   selectEvents,
 } from '../store/eventsSlice';
+import eventsService from '../services/eventsService';
 import { userApi } from '../services/api';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
+import RatingStars from '../components/RatingStars';
 
 // ─── Status helpers ───
 
 const STATUS_LABELS = {
-  confirmed: 'Confirmada',
-  pending_approval: 'Pendiente',
-  pending_payment: 'Procesando',
-  completed: 'Completada',
-  rejected: 'Rechazada',
-  expired: 'Expirada',
-  cancelled_by_guest: 'Cancelada',
-  cancelled_by_host: 'Cancelada',
+  confirmed: 'Confirmada', pending_approval: 'Pendiente', pending_payment: 'Procesando',
+  completed: 'Completada', rejected: 'Rechazada', expired: 'Expirada',
+  cancelled_by_guest: 'Cancelada', cancelled_by_host: 'Cancelada',
 };
-
 const STATUS_COLORS = {
-  confirmed: colors.success,
-  pending_approval: colors.accent,
-  pending_payment: colors.textMuted,
-  completed: colors.textMuted,
-  rejected: colors.error,
-  expired: colors.textMuted,
-  cancelled_by_guest: colors.textMuted,
-  cancelled_by_host: colors.textMuted,
+  confirmed: colors.success, pending_approval: colors.accent, pending_payment: colors.textMuted,
+  completed: colors.textMuted, rejected: colors.error, expired: colors.textMuted,
+  cancelled_by_guest: colors.textMuted, cancelled_by_host: colors.textMuted,
 };
 
 // ─── Component ───
@@ -61,13 +52,20 @@ export default function ProfileScreen({ navigation }) {
   const [saving, setSaving] = useState(false);
   const [guestNames, setGuestNames] = useState({});
   const [actioningId, setActioningId] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [reviewMeta, setReviewMeta] = useState({ total: 0, average_rating: null });
 
   useEffect(() => {
-    if (user?.id) dispatch(fetchUserReservations(user.id));
+    if (user?.id) {
+      dispatch(fetchUserReservations(user.id));
+      eventsService.getUserReviews(user.id).then(d => {
+        setReviews(d.reviews || []);
+        setReviewMeta({ total: d.total, average_rating: d.average_rating });
+      }).catch(() => {});
+    }
     if (isHost) dispatch(fetchPendingApprovals());
   }, [dispatch, user?.id, isHost]);
 
-  // Fetch guest names for pending approvals
   useEffect(() => {
     if (pendingApprovals.length === 0) return;
     const unknownIds = [...new Set(pendingApprovals.map(r => r.guest_id))].filter(id => !guestNames[id]);
@@ -124,7 +122,6 @@ export default function ProfileScreen({ navigation }) {
     setEditBio(user?.profile?.bio || '');
     setEditModal(true);
   };
-
   const saveEdit = async () => {
     setSaving(true);
     try {
@@ -133,7 +130,6 @@ export default function ProfileScreen({ navigation }) {
     } catch { Alert.alert('Error', 'No se pudo guardar'); }
     setSaving(false);
   };
-
   const handleLogout = () => {
     Alert.alert('Cerrar sesión', '¿Seguro?', [
       { text: 'Cancelar', style: 'cancel' },
@@ -144,6 +140,11 @@ export default function ProfileScreen({ navigation }) {
   const upcoming = reservations.filter(r => ['confirmed', 'pending_approval', 'pending_payment'].includes(r.status));
   const past = reservations.filter(r => ['completed', 'rejected', 'expired', 'cancelled_by_guest', 'cancelled_by_host'].includes(r.status));
 
+  const memberSince = user?.created_at ? new Date(user.created_at).getFullYear() : null;
+  const emailVerified = user?.email_verified === true;
+  const phoneVerified = user?.phone_verified === true;
+  const profileVerified = emailVerified && phoneVerified;
+
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
@@ -152,7 +153,6 @@ export default function ProfileScreen({ navigation }) {
         <View style={s.header}>
           <Text style={s.headerTitle}>Perfil</Text>
         </View>
-
         <View style={s.rule} />
 
         {/* ── Identity ── */}
@@ -163,28 +163,63 @@ export default function ProfileScreen({ navigation }) {
           <View style={s.identityInfo}>
             <Text style={s.name}>{displayName}</Text>
             <Text style={s.email}>{user?.email}</Text>
-            {isHost && <Text style={s.badge}>ANFITRI\u00D3N</Text>}
+            {isHost && <Text style={s.hostBadge}>ANFITRIÓN</Text>}
           </View>
           <Pressable onPress={openEdit} hitSlop={12}>
             <Text style={s.editLink}>EDITAR</Text>
           </Pressable>
         </View>
 
-        {user?.profile?.bio ? (
-          <Text style={s.bio}>{user.profile.bio}</Text>
-        ) : null}
+        {user?.profile?.bio ? <Text style={s.bio}>{user.profile.bio}</Text> : null}
+
+        {/* ── Badges de confianza ── */}
+        <View style={s.badgesRow}>
+          {emailVerified && (
+            <View style={s.badge}>
+              <Ionicons name="mail" size={13} color={colors.success} />
+              <Text style={s.badgeText}>Email verificado</Text>
+            </View>
+          )}
+          {phoneVerified && (
+            <View style={s.badge}>
+              <Ionicons name="call" size={13} color={colors.success} />
+              <Text style={s.badgeText}>Teléfono verificado</Text>
+            </View>
+          )}
+          {profileVerified && (
+            <View style={[s.badge, s.badgeAccent]}>
+              <Ionicons name="shield-checkmark" size={13} color={colors.accent} />
+              <Text style={[s.badgeText, { color: colors.accent }]}>Perfil verificado</Text>
+            </View>
+          )}
+          {memberSince && (
+            <View style={s.badge}>
+              <Ionicons name="calendar-outline" size={13} color={colors.textMuted} />
+              <Text style={[s.badgeText, { color: colors.textMuted }]}>Desde {memberSince}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── Rating ── */}
+        {reviewMeta.average_rating && (
+          <View style={s.ratingRow}>
+            <RatingStars rating={reviewMeta.average_rating} size={16} />
+            <Text style={s.ratingText}>
+              {reviewMeta.average_rating.toFixed(1)} · {reviewMeta.total} reseña{reviewMeta.total !== 1 ? 's' : ''}
+            </Text>
+          </View>
+        )}
 
         <View style={s.rule} />
 
         {/* ── Stats ── */}
         <View style={s.statsRow}>
-          <StatItem num={upcoming.length} label="PR\u00D3XIMAS" />
+          <StatItem num={upcoming.length} label="PRÓXIMAS" />
           <View style={s.statSep} />
           <StatItem num={past.length} label="PASADAS" />
           <View style={s.statSep} />
           <StatItem num={reservations.length} label="TOTAL" />
         </View>
-
         <View style={s.rule} />
 
         {/* ── Pending approvals (host) ── */}
@@ -194,21 +229,16 @@ export default function ProfileScreen({ navigation }) {
             <Text style={s.sectionHint}>
               {pendingApprovals.length} solicitud{pendingApprovals.length > 1 ? 'es' : ''} esperando tu respuesta
             </Text>
-
             {pendingApprovals.map((r) => (
               <View key={r.id} style={s.approvalCard}>
                 <View style={s.approvalTop}>
                   <View style={s.approvalAvatar}>
-                    <Text style={s.approvalInitial}>
-                      {(guestNames[r.guest_id] || '?')[0].toUpperCase()}
-                    </Text>
+                    <Text style={s.approvalInitial}>{(guestNames[r.guest_id] || '?')[0].toUpperCase()}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.approvalName}>
-                      {guestNames[r.guest_id] || 'Cargando...'}
-                    </Text>
+                    <Text style={s.approvalName}>{guestNames[r.guest_id] || 'Cargando...'}</Text>
                     <Text style={s.approvalMeta}>
-                      {r.party_size} {r.party_size === 1 ? 'plaza' : 'plazas'} {'\u00B7'} {'\u20AC'}{Number(r.total_amount).toFixed(0)}
+                      {r.party_size} {r.party_size === 1 ? 'plaza' : 'plazas'} · €{Number(r.total_amount).toFixed(0)}
                     </Text>
                   </View>
                 </View>
@@ -229,30 +259,23 @@ export default function ProfileScreen({ navigation }) {
                 </View>
               </View>
             ))}
-
             <View style={s.rule} />
           </>
         )}
 
-        {/* ── Upcoming reservations ── */}
+        {/* ── Upcoming ── */}
         {upcoming.length > 0 && (
           <>
-            <Text style={s.sectionLabel}>PR\u00D3XIMAS CENAS</Text>
+            <Text style={s.sectionLabel}>PRÓXIMAS CENAS</Text>
             {upcoming.map((r) => (
-              <Pressable
-                key={r.id}
-                style={s.resRow}
-                onPress={() => navigation.navigate('Inicio', {
-                  screen: 'EventDetail',
-                  params: { eventId: r.event_id },
-                })}
-              >
+              <Pressable key={r.id} style={s.resRow}
+                onPress={() => navigation.navigate('Inicio', { screen: 'EventDetail', params: { eventId: r.event_id } })}>
                 <View style={[s.statusDot, { backgroundColor: STATUS_COLORS[r.status] || colors.textMuted }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.resTitle}>{r.event_title || getEventTitle(r.event_id)}</Text>
                   <Text style={s.resMeta}>
                     {STATUS_LABELS[r.status] || r.status}
-                    {r.confirmation_code ? ` \u00B7 ${r.confirmation_code}` : ''}
+                    {r.confirmation_code ? ` · ${r.confirmation_code}` : ''}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
@@ -262,24 +285,16 @@ export default function ProfileScreen({ navigation }) {
           </>
         )}
 
-        {/* ── Past reservations ── */}
+        {/* ── Past ── */}
         {past.length > 0 && (
           <>
             <Text style={s.sectionLabel}>HISTORIAL</Text>
             {past.map((r) => (
-              <Pressable
-                key={r.id}
-                style={s.resRow}
-                onPress={() => navigation.navigate('Inicio', {
-                  screen: 'EventDetail',
-                  params: { eventId: r.event_id },
-                })}
-              >
+              <Pressable key={r.id} style={s.resRow}
+                onPress={() => navigation.navigate('Inicio', { screen: 'EventDetail', params: { eventId: r.event_id } })}>
                 <View style={[s.statusDot, { backgroundColor: STATUS_COLORS[r.status] || colors.textMuted }]} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[s.resTitle, { color: colors.textMuted }]}>
-                    {r.event_title || getEventTitle(r.event_id)}
-                  </Text>
+                  <Text style={[s.resTitle, { color: colors.textMuted }]}>{r.event_title || getEventTitle(r.event_id)}</Text>
                   <Text style={s.resMeta}>{STATUS_LABELS[r.status] || r.status}</Text>
                 </View>
               </Pressable>
@@ -288,25 +303,51 @@ export default function ProfileScreen({ navigation }) {
           </>
         )}
 
-        {/* ── Become host CTA ── */}
+        {/* ── Reseñas recibidas ── */}
+        <Text style={s.sectionLabel}>RESEÑAS RECIBIDAS</Text>
+        {reviews.length > 0 ? (
+          reviews.map((rev) => (
+            <View key={rev.id} style={s.reviewCard}>
+              <View style={s.reviewHeader}>
+                <View style={s.reviewAvatar}>
+                  <Text style={s.reviewAvatarText}>
+                    {(rev.reviewer.first_name || rev.reviewer.username || '?')[0].toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.reviewName}>
+                    {rev.reviewer.first_name
+                      ? `${rev.reviewer.first_name} ${rev.reviewer.last_name || ''}`.trim()
+                      : rev.reviewer.username}
+                  </Text>
+                  <RatingStars rating={rev.rating} size={12} />
+                </View>
+                <Text style={s.reviewDate}>
+                  {new Date(rev.created_at).toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+                </Text>
+              </View>
+              {rev.comment && <Text style={s.reviewComment}>{rev.comment}</Text>}
+            </View>
+          ))
+        ) : (
+          <Text style={s.emptyReviews}>Aún no tienes reseñas.</Text>
+        )}
+
+        {/* ── Host CTA ── */}
         {!isHost && (
-          <Pressable
-            style={s.hostCta}
-            onPress={() => Alert.alert('Próximamente', 'Podrás convertirte en anfitrión.')}
-          >
+          <Pressable style={s.hostCta}
+            onPress={() => Alert.alert('Próximamente', 'Podrás convertirte en anfitrión.')}>
             <View style={{ flex: 1 }}>
-              <Text style={s.hostCtaTitle}>{'\u00BF'}Quieres cocinar?</Text>
+              <Text style={s.hostCtaTitle}>¿Quieres cocinar?</Text>
               <Text style={s.hostCtaSub}>Conviértete en anfitrión y abre tu mesa.</Text>
             </View>
-            <View style={s.hostCtaBtn}>
-              <Text style={s.hostCtaBtnText}>SER CHEF</Text>
-            </View>
+            <View style={s.hostCtaBtn}><Text style={s.hostCtaBtnText}>SER CHEF</Text></View>
           </Pressable>
         )}
 
         {/* ── Logout ── */}
         <Pressable style={s.logoutRow} onPress={handleLogout}>
-          <Text style={s.logoutText}>CERRAR SESI\u00D3N</Text>
+          <Text style={s.logoutText}>CERRAR SESIÓN</Text>
         </Pressable>
 
       </ScrollView>
@@ -328,30 +369,18 @@ export default function ProfileScreen({ navigation }) {
           <View style={s.ruleNoMargin} />
           <View style={s.modalBody}>
             <Text style={s.fieldLabel}>NOMBRE</Text>
-            <TextInput
-              style={s.field}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Tu nombre"
-              placeholderTextColor={colors.textMuted}
-            />
+            <TextInput style={s.field} value={editName} onChangeText={setEditName}
+              placeholder="Tu nombre" placeholderTextColor={colors.textMuted} />
             <Text style={s.fieldLabel}>BIO</Text>
-            <TextInput
-              style={[s.field, { minHeight: 100, textAlignVertical: 'top' }]}
-              value={editBio}
-              onChangeText={setEditBio}
-              placeholder="Cuéntanos sobre ti..."
-              placeholderTextColor={colors.textMuted}
-              multiline
-            />
+            <TextInput style={[s.field, { minHeight: 100, textAlignVertical: 'top' }]}
+              value={editBio} onChangeText={setEditBio}
+              placeholder="Cuéntanos sobre ti..." placeholderTextColor={colors.textMuted} multiline />
           </View>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
 }
-
-// ─── Stat item ───
 
 const StatItem = ({ num, label }) => (
   <View style={s.stat}>
@@ -366,274 +395,127 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingBottom: spacing.xxxl + spacing.xxl },
 
-  // Header
   header: { paddingHorizontal: spacing.gutter, paddingTop: spacing.lg },
-  headerTitle: {
-    ...typography.sectionTitle,
-    color: colors.textPrimary,
-    fontSize: 36,
-  },
-
-  rule: {
-    height: borders.hairline,
-    backgroundColor: colors.borderHairline,
-    marginHorizontal: spacing.gutter,
-    marginVertical: spacing.md,
-  },
-  ruleNoMargin: {
-    height: borders.hairline,
-    backgroundColor: colors.borderHairline,
-  },
+  headerTitle: { ...typography.sectionTitle, color: colors.textPrimary, fontSize: 36 },
+  rule: { height: borders.hairline, backgroundColor: colors.borderHairline, marginHorizontal: spacing.gutter, marginVertical: spacing.md },
+  ruleNoMargin: { height: borders.hairline, backgroundColor: colors.borderHairline },
 
   // Identity
-  identity: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingHorizontal: spacing.gutter,
-  },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.gutter },
   avatar: {
     width: 56, height: 56, borderRadius: radius.pill,
-    backgroundColor: colors.textPrimary,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.textPrimary, alignItems: 'center', justifyContent: 'center',
   },
-  avatarLetter: {
-    ...typography.dinnerTitle,
-    color: colors.onAccent,
-    fontSize: 22,
-  },
+  avatarLetter: { ...typography.dinnerTitle, color: colors.onAccent, fontSize: 22 },
   identityInfo: { flex: 1 },
-  name: {
-    ...typography.dinnerTitle,
-    color: colors.textPrimary,
-    fontSize: 22,
-  },
-  email: {
-    ...typography.body,
-    color: colors.textMuted,
-    marginTop: 2,
+  name: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 22 },
+  email: { ...typography.body, color: colors.textMuted, marginTop: 2 },
+  hostBadge: { ...typography.label, color: colors.accent, letterSpacing: 2, marginTop: spacing.xxs, fontSize: 9 },
+  editLink: { ...typography.button, color: colors.accent, borderBottomWidth: borders.medium, borderBottomColor: colors.accent, paddingBottom: 1 },
+  bio: { ...typography.standfirst, color: colors.textSecondary, paddingHorizontal: spacing.gutter, marginTop: spacing.sm },
+
+  // Badges
+  badgesRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
+    paddingHorizontal: spacing.gutter, marginTop: spacing.sm,
   },
   badge: {
-    ...typography.label,
-    color: colors.accent,
-    letterSpacing: 2,
-    marginTop: spacing.xxs,
-    fontSize: 9,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: spacing.xxs, paddingHorizontal: spacing.xs,
+    borderWidth: borders.hairline, borderColor: colors.borderHairline,
   },
-  editLink: {
-    ...typography.button,
-    color: colors.accent,
-    borderBottomWidth: borders.medium,
-    borderBottomColor: colors.accent,
-    paddingBottom: 1,
-  },
+  badgeAccent: { borderColor: colors.accent, backgroundColor: 'rgba(191,71,38,0.06)' },
+  badgeText: { ...typography.price, color: colors.success, fontSize: 10 },
 
-  bio: {
-    ...typography.standfirst,
-    color: colors.textSecondary,
-    paddingHorizontal: spacing.gutter,
-    marginTop: spacing.sm,
+  // Rating
+  ratingRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    paddingHorizontal: spacing.gutter, marginTop: spacing.sm,
   },
+  ratingText: { ...typography.price, color: colors.textMuted, fontSize: 12 },
 
   // Stats
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.gutter,
-  },
+  statsRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.gutter },
   stat: { flex: 1, alignItems: 'center' },
-  statNum: {
-    ...typography.numeral,
-    color: colors.textPrimary,
-    fontSize: 26,
-  },
-  statLabel: {
-    ...typography.label,
-    color: colors.textMuted,
-    letterSpacing: 2,
-    fontSize: 8,
-    marginTop: 2,
-  },
-  statSep: {
-    width: borders.hairline,
-    height: 28,
-    backgroundColor: colors.borderHairline,
-  },
+  statNum: { ...typography.numeral, color: colors.textPrimary, fontSize: 26 },
+  statLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 2, fontSize: 8, marginTop: 2 },
+  statSep: { width: borders.hairline, height: 28, backgroundColor: colors.borderHairline },
 
-  // Section
-  sectionLabel: {
-    ...typography.label,
-    color: colors.textMuted,
-    letterSpacing: 2.5,
-    paddingHorizontal: spacing.gutter,
-    marginBottom: spacing.xxs,
-  },
-  sectionHint: {
-    ...typography.standfirst,
-    color: colors.textSecondary,
-    fontSize: 14,
-    paddingHorizontal: spacing.gutter,
-    marginBottom: spacing.md,
-  },
+  // Sections
+  sectionLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 2.5, paddingHorizontal: spacing.gutter, marginBottom: spacing.xxs },
+  sectionHint: { ...typography.standfirst, color: colors.textSecondary, fontSize: 14, paddingHorizontal: spacing.gutter, marginBottom: spacing.md },
 
-  // Approval cards
+  // Approvals
   approvalCard: {
-    marginHorizontal: spacing.gutter,
-    marginBottom: spacing.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.accent,
-    backgroundColor: 'rgba(191,71,38,0.05)',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.gutter, marginBottom: spacing.sm,
+    borderLeftWidth: 3, borderLeftColor: colors.accent, backgroundColor: 'rgba(191,71,38,0.05)',
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
   },
-  approvalTop: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-  },
+  approvalTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   approvalAvatar: {
     width: 36, height: 36, borderRadius: radius.pill,
-    backgroundColor: colors.textPrimary,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.textPrimary, alignItems: 'center', justifyContent: 'center',
   },
-  approvalInitial: {
-    ...typography.dinnerTitle,
-    color: colors.onAccent,
-    fontSize: 14,
-  },
-  approvalName: {
-    ...typography.dinnerTitle,
-    color: colors.textPrimary,
-    fontSize: 16,
-  },
-  approvalMeta: {
-    ...typography.price,
-    color: colors.textMuted,
-    marginTop: 1,
-  },
-  approvalEvent: {
-    ...typography.standfirst,
-    color: colors.textSecondary,
-    fontSize: 13,
-    marginTop: spacing.xs,
-    marginLeft: 36 + spacing.sm,
-  },
-  approvalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  btnOutline: {
-    borderWidth: borders.medium,
-    borderColor: colors.border,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-  },
-  btnOutlineText: {
-    ...typography.button,
-    color: colors.textPrimary,
-  },
-  btnFill: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-  },
-  btnFillText: {
-    ...typography.button,
-    color: colors.onAccent,
-  },
+  approvalInitial: { ...typography.dinnerTitle, color: colors.onAccent, fontSize: 14 },
+  approvalName: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 16 },
+  approvalMeta: { ...typography.price, color: colors.textMuted, marginTop: 1 },
+  approvalEvent: { ...typography.standfirst, color: colors.textSecondary, fontSize: 13, marginTop: spacing.xs, marginLeft: 36 + spacing.sm },
+  approvalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm },
+  btnOutline: { borderWidth: borders.medium, borderColor: colors.border, paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
+  btnOutlineText: { ...typography.button, color: colors.textPrimary },
+  btnFill: { backgroundColor: colors.accent, paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
+  btnFillText: { ...typography.button, color: colors.onAccent },
 
-  // Reservation rows
+  // Reservations
   resRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.gutter, paddingVertical: spacing.sm,
     borderBottomWidth: borders.hairline, borderBottomColor: colors.borderHairline,
   },
-  statusDot: {
-    width: 8, height: 8, borderRadius: radius.pill,
+  statusDot: { width: 8, height: 8, borderRadius: radius.pill },
+  resTitle: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 16 },
+  resMeta: { ...typography.price, color: colors.textMuted, marginTop: 2 },
+
+  // Reviews
+  reviewCard: {
+    marginHorizontal: spacing.gutter, marginBottom: spacing.sm,
+    paddingBottom: spacing.sm, borderBottomWidth: borders.hairline, borderBottomColor: colors.borderHairline,
   },
-  resTitle: {
-    ...typography.dinnerTitle,
-    color: colors.textPrimary,
-    fontSize: 16,
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  reviewAvatar: {
+    width: 32, height: 32, borderRadius: radius.pill,
+    backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center',
   },
-  resMeta: {
-    ...typography.price,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
+  reviewAvatarText: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 13 },
+  reviewName: { ...typography.body, fontWeight: '600', color: colors.textPrimary, fontSize: 13, marginBottom: 2 },
+  reviewDate: { ...typography.price, color: colors.textMuted, fontSize: 10 },
+  reviewComment: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs, marginLeft: 32 + spacing.xs, lineHeight: 20 },
+  emptyReviews: { ...typography.standfirst, color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.gutter, paddingVertical: spacing.lg, fontSize: 14 },
 
   // Host CTA
   hostCta: {
-    marginHorizontal: spacing.gutter,
-    marginVertical: spacing.md,
-    borderWidth: borders.medium,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    marginHorizontal: spacing.gutter, marginVertical: spacing.md,
+    borderWidth: borders.medium, borderColor: colors.border,
+    paddingVertical: spacing.md, paddingHorizontal: spacing.md,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
   },
-  hostCtaTitle: {
-    ...typography.dinnerTitle,
-    color: colors.textPrimary,
-    fontSize: 18,
-    marginBottom: spacing.xxs,
-  },
-  hostCtaSub: {
-    ...typography.body,
-    color: colors.textMuted,
-  },
-  hostCtaBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-  },
-  hostCtaBtnText: {
-    ...typography.button,
-    color: colors.onAccent,
-  },
+  hostCtaTitle: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 18, marginBottom: spacing.xxs },
+  hostCtaSub: { ...typography.body, color: colors.textMuted },
+  hostCtaBtn: { backgroundColor: colors.accent, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
+  hostCtaBtnText: { ...typography.button, color: colors.onAccent },
 
   // Logout
-  logoutRow: {
-    paddingHorizontal: spacing.gutter,
-    paddingVertical: spacing.md,
-    marginTop: spacing.sm,
-  },
-  logoutText: {
-    ...typography.label,
-    color: colors.accent,
-    letterSpacing: 2,
-  },
+  logoutRow: { paddingHorizontal: spacing.gutter, paddingVertical: spacing.md, marginTop: spacing.sm },
+  logoutText: { ...typography.label, color: colors.accent, letterSpacing: 2 },
 
-  // Edit modal
+  // Modal
   modalHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.gutter, paddingVertical: spacing.sm,
   },
-  modalTitle: {
-    ...typography.dinnerTitle,
-    color: colors.textPrimary,
-    fontSize: 18,
-  },
-  modalSave: {
-    ...typography.button,
-    color: colors.accent,
-  },
-  modalBody: {
-    paddingHorizontal: spacing.gutter, paddingTop: spacing.md,
-  },
-  fieldLabel: {
-    ...typography.label,
-    color: colors.textMuted,
-    letterSpacing: 2,
-    marginBottom: spacing.xs,
-    marginTop: spacing.lg,
-  },
-  field: {
-    ...typography.input,
-    color: colors.textPrimary,
-    borderBottomWidth: borders.medium,
-    borderBottomColor: colors.border,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: 0,
-  },
+  modalTitle: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 18 },
+  modalSave: { ...typography.button, color: colors.accent },
+  modalBody: { paddingHorizontal: spacing.gutter, paddingTop: spacing.md },
+  fieldLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 2, marginBottom: spacing.xs, marginTop: spacing.lg },
+  field: { ...typography.input, color: colors.textPrimary, borderBottomWidth: borders.medium, borderBottomColor: colors.border, paddingVertical: spacing.xs, paddingHorizontal: 0 },
 });

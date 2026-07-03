@@ -1,4 +1,4 @@
-// ChefProfileScreen.js — Perfil del chef/anfitrión con follow/unfollow
+// ChefProfileScreen.js — Perfil público con bloque de confianza, rating y reseñas
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Alert,
@@ -7,12 +7,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { userApi } from '../services/api';
+import eventsService from '../services/eventsService';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
-import { sizes } from '../theme/sizes';
 import { typography } from '../theme/typography';
+import RatingStars from '../components/RatingStars';
 
 export default function ChefProfileScreen({ route, navigation }) {
   const { userId, userName } = route.params;
@@ -20,207 +21,312 @@ export default function ChefProfileScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [reviewMeta, setReviewMeta] = useState({ total: 0, average_rating: null });
 
   const loadProfile = useCallback(async () => {
     try {
-      const res = await userApi.get(`/users/${userId}/profile`);
+      const res = await userApi.get(`/users/${userId}`);
       setProfile(res.data);
       setFollowing(res.data.is_following === true);
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'No se pudo cargar el perfil');
     }
     setLoading(false);
   }, [userId]);
 
-  useEffect(() => { loadProfile(); }, [loadProfile]);
+  const loadReviews = useCallback(async () => {
+    try {
+      const data = await eventsService.getUserReviews(userId);
+      setReviews(data.reviews || []);
+      setReviewMeta({ total: data.total, average_rating: data.average_rating });
+    } catch {}
+  }, [userId]);
+
+  useEffect(() => { loadProfile(); loadReviews(); }, [loadProfile, loadReviews]);
 
   const toggleFollow = async () => {
-    const wasFollowing = following;
-    setFollowing(!wasFollowing); // optimistic
+    const was = following;
+    setFollowing(!was);
     setFollowLoading(true);
     try {
-      if (wasFollowing) {
-        await userApi.delete(`/users/${userId}/follow`);
-      } else {
-        await userApi.post(`/users/${userId}/follow`);
-      }
+      if (was) await userApi.delete(`/users/${userId}/follow`);
+      else await userApi.post(`/users/${userId}/follow`);
     } catch (e) {
-      setFollowing(wasFollowing); // revert
-      if (e.response?.status !== 409) {
-        Alert.alert('Error', e.userMessage || 'No se pudo completar');
-      }
+      setFollowing(was);
+      if (e.response?.status !== 409) Alert.alert('Error', e.userMessage || 'No se pudo completar');
     }
     setFollowLoading(false);
   };
 
-  const initials = (userName || profile?.username || '?')[0].toUpperCase();
-  const displayName = profile?.profile?.first_name
-    ? `${profile.profile.first_name} ${profile.profile.last_name || ''}`
-    : profile?.username || userName || '';
-
   if (loading) {
     return (
-      <SafeAreaView style={st.safe} edges={['top']}>
-        <View style={st.loadWrap}>
-          <ActivityIndicator color={colors.accent} />
-        </View>
+      <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.center}><ActivityIndicator color={colors.accent} /></View>
       </SafeAreaView>
     );
   }
 
   const p = profile?.profile;
+  const initials = (userName || profile?.username || '?')[0].toUpperCase();
+  const displayName = p?.first_name
+    ? `${p.first_name} ${p.last_name || ''}`.trim()
+    : profile?.username || userName || '';
+
+  const memberSince = profile?.created_at
+    ? new Date(profile.created_at).getFullYear()
+    : null;
+
+  const emailVerified = profile?.email_verified === true;
+  const phoneVerified = profile?.phone_verified === true;
+  const profileVerified = emailVerified && phoneVerified;
 
   return (
-    <SafeAreaView style={st.safe} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll}>
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
         {/* Back */}
-        <Pressable style={st.backBtn} onPress={() => navigation.goBack()} hitSlop={12}>
+        <Pressable style={s.backBtn} onPress={() => navigation.goBack()} hitSlop={12}>
           <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
         </Pressable>
 
-        {/* Avatar + Name */}
-        <View style={st.heroSection}>
-          <View style={st.avatar}>
-            <Text style={st.avatarText}>{initials}</Text>
+        {/* ── Avatar + Name ── */}
+        <View style={s.heroSection}>
+          <View style={s.avatar}>
+            <Text style={s.avatarText}>{initials}</Text>
           </View>
-          <Text style={st.name}>{displayName}</Text>
-          {p?.is_host && <Text style={st.hostBadge}>ANFITRIÓN</Text>}
-          {p?.city && <Text style={st.city}>{p.city}{p.country ? `, ${p.country}` : ''}</Text>}
+          <Text style={s.name}>{displayName}</Text>
+          {p?.is_host && <Text style={s.hostBadge}>ANFITRIÓN</Text>}
+          {p?.city && (
+            <Text style={s.city}>{p.city}{p.country ? `, ${p.country}` : ''}</Text>
+          )}
+          {memberSince && (
+            <Text style={s.memberSince}>Miembro desde {memberSince}</Text>
+          )}
         </View>
 
-        {/* Follow button */}
+        {/* ── Badges de confianza ── */}
+        <View style={s.badgesRow}>
+          {emailVerified && (
+            <View style={s.badge}>
+              <Ionicons name="mail" size={13} color={colors.success} />
+              <Text style={s.badgeText}>Email verificado</Text>
+            </View>
+          )}
+          {phoneVerified && (
+            <View style={s.badge}>
+              <Ionicons name="call" size={13} color={colors.success} />
+              <Text style={s.badgeText}>Teléfono verificado</Text>
+            </View>
+          )}
+          {profileVerified && (
+            <View style={[s.badge, s.badgeAccent]}>
+              <Ionicons name="shield-checkmark" size={13} color={colors.accent} />
+              <Text style={[s.badgeText, { color: colors.accent }]}>Perfil verificado</Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── Rating inline ── */}
+        {reviewMeta.average_rating && (
+          <View style={s.ratingRow}>
+            <RatingStars rating={reviewMeta.average_rating} size={18} />
+            <Text style={s.ratingText}>
+              {reviewMeta.average_rating.toFixed(1)} · {reviewMeta.total} reseña{reviewMeta.total !== 1 ? 's' : ''}
+            </Text>
+          </View>
+        )}
+
+        {/* ── Follow ── */}
         <Pressable
-          style={[st.followBtn, following && st.followBtnActive]}
+          style={[s.followBtn, following && s.followBtnActive]}
           onPress={toggleFollow}
           disabled={followLoading}
         >
           {followLoading ? (
             <ActivityIndicator color={following ? colors.textPrimary : colors.onAccent} size="small" />
           ) : (
-            <>
-              <Ionicons
-                name={following ? 'checkmark' : 'add'}
-                size={16}
-                color={following ? colors.textPrimary : colors.onAccent}
-              />
-              <Text style={[st.followBtnText, following && st.followBtnTextActive]}>
-                {following ? 'Siguiendo' : 'Seguir'}
-              </Text>
-            </>
+            <Text style={[s.followBtnText, following && s.followBtnTextActive]}>
+              {following ? 'SIGUIENDO' : 'SEGUIR'}
+            </Text>
           )}
         </Pressable>
 
-        <View style={st.rule} />
+        <View style={s.rule} />
 
-        {/* Stats */}
-        <View style={st.statsRow}>
-          <View style={st.stat}>
-            <Text style={st.statNum}>{profile?.followers_count ?? 0}</Text>
-            <Text style={st.statLabel}>Seguidores</Text>
-          </View>
-          <View style={st.stat}>
-            <Text style={st.statNum}>{profile?.following_count ?? 0}</Text>
-            <Text style={st.statLabel}>Siguiendo</Text>
-          </View>
-          {p?.total_dinners_hosted > 0 && (
-            <View style={st.stat}>
-              <Text style={st.statNum}>{p.total_dinners_hosted}</Text>
-              <Text style={st.statLabel}>Cenas</Text>
-            </View>
-          )}
-          {p?.average_host_rating > 0 && (
-            <View style={st.stat}>
-              <Text style={st.statNum}>{p.average_host_rating.toFixed(1)}</Text>
-              <Text style={st.statLabel}>Rating</Text>
-            </View>
+        {/* ── Stats ── */}
+        <View style={s.statsRow}>
+          <StatItem num={profile?.followers_count ?? 0} label="SEGUIDORES" />
+          <View style={s.statSep} />
+          <StatItem num={profile?.following_count ?? 0} label="SIGUIENDO" />
+          {(p?.total_dinners_hosted > 0 || p?.total_dinners_attended > 0) && (
+            <>
+              <View style={s.statSep} />
+              <StatItem
+                num={p?.total_dinners_hosted || p?.total_dinners_attended || 0}
+                label={p?.is_host ? 'CENAS' : 'ASISTIDAS'}
+              />
+            </>
           )}
         </View>
 
-        <View style={st.rule} />
+        <View style={s.rule} />
 
-        {/* Bio */}
+        {/* ── Bio ── */}
         {p?.bio ? (
           <>
-            <Text style={st.sectionLabel}>Sobre mí</Text>
-            <Text style={st.bio}>{p.bio}</Text>
-            <View style={st.rule} />
+            <Text style={s.sectionLabel}>SOBRE MÍ</Text>
+            <Text style={s.bio}>{p.bio}</Text>
+            <View style={s.rule} />
           </>
         ) : null}
 
-        {/* Specialties */}
-        {p?.specialties && (
-          <>
-            <Text style={st.sectionLabel}>Especialidades</Text>
-            <Text style={st.bodyText}>{p.specialties}</Text>
-            <View style={st.rule} />
-          </>
-        )}
-
-        {/* Kitchen */}
-        {p?.kitchen_description && (
-          <>
-            <Text style={st.sectionLabel}>Mi cocina</Text>
-            <Text style={st.bodyText}>{p.kitchen_description}</Text>
-            <View style={st.rule} />
-          </>
-        )}
-
-        {/* Languages */}
-        {p?.languages_spoken && (
-          <>
-            <Text style={st.sectionLabel}>Idiomas</Text>
-            <Text style={st.bodyText}>{p.languages_spoken}</Text>
-          </>
+        {/* ── Reseñas ── */}
+        <Text style={s.sectionLabel}>RESEÑAS</Text>
+        {reviews.length > 0 ? (
+          reviews.map((rev) => (
+            <View key={rev.id} style={s.reviewCard}>
+              <View style={s.reviewHeader}>
+                <View style={s.reviewAvatar}>
+                  <Text style={s.reviewAvatarText}>
+                    {(rev.reviewer.first_name || rev.reviewer.username || '?')[0].toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.reviewName}>
+                    {rev.reviewer.first_name
+                      ? `${rev.reviewer.first_name} ${rev.reviewer.last_name || ''}`.trim()
+                      : rev.reviewer.username}
+                  </Text>
+                  <RatingStars rating={rev.rating} size={12} />
+                </View>
+                <Text style={s.reviewDate}>
+                  {new Date(rev.created_at).toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+                </Text>
+              </View>
+              {rev.comment && <Text style={s.reviewComment}>{rev.comment}</Text>}
+            </View>
+          ))
+        ) : (
+          <Text style={s.emptyReviews}>
+            Aún no tiene reseñas.{'\n'}¡Sé el primero en cenar con {displayName.split(' ')[0]}!
+          </Text>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const st = StyleSheet.create({
+const StatItem = ({ num, label }) => (
+  <View style={s.stat}>
+    <Text style={s.statNum}>{num}</Text>
+    <Text style={s.statLabel}>{label}</Text>
+  </View>
+);
+
+const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingBottom: spacing.xxxl + spacing.xxl },
-  loadWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   backBtn: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center',
-    marginLeft: spacing.xl, marginTop: spacing.sm,
+    width: 36, height: 36,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: borders.hairline, borderColor: colors.borderHairline, borderRadius: radius.pill,
+    marginLeft: spacing.gutter, marginTop: spacing.sm,
   },
 
-  heroSection: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.md },
+  // Hero
+  heroSection: { alignItems: 'center', paddingTop: spacing.lg, paddingBottom: spacing.sm },
   avatar: {
     width: 72, height: 72, borderRadius: radius.pill,
     backgroundColor: colors.textPrimary, alignItems: 'center', justifyContent: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   avatarText: { ...typography.sectionTitleSm, color: colors.onAccent },
   name: { ...typography.sectionTitleSm, color: colors.textPrimary, textAlign: 'center' },
-  hostBadge: { ...typography.labelSm, color: colors.accent, marginTop: spacing.xs, letterSpacing: 1.4 },
+  hostBadge: { ...typography.label, color: colors.accent, marginTop: spacing.xxs, letterSpacing: 2, fontSize: 9 },
   city: { ...typography.body, color: colors.textMuted, marginTop: spacing.xxs },
+  memberSince: { ...typography.price, color: colors.textMuted, marginTop: spacing.xxs },
 
+  // Badges
+  badgesRow: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
+    gap: spacing.xs, paddingHorizontal: spacing.gutter, marginTop: spacing.sm,
+  },
+  badge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: spacing.xxs, paddingHorizontal: spacing.xs,
+    borderWidth: borders.hairline, borderColor: colors.borderHairline,
+  },
+  badgeAccent: {
+    borderColor: colors.accent, backgroundColor: 'rgba(191,71,38,0.06)',
+  },
+  badgeText: {
+    ...typography.price, color: colors.success, fontSize: 10,
+  },
+
+  // Rating
+  ratingRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.xs, marginTop: spacing.md,
+  },
+  ratingText: {
+    ...typography.price, color: colors.textMuted, fontSize: 12,
+  },
+
+  // Follow
   followBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
     alignSelf: 'center', marginTop: spacing.md,
-    backgroundColor: colors.accent, borderRadius: radius.xs,
-    paddingVertical: spacing.sm, paddingHorizontal: spacing.xl,
-    minWidth: 140,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.xs + 2, paddingHorizontal: spacing.xxl,
   },
   followBtnActive: {
     backgroundColor: 'transparent',
     borderWidth: borders.medium, borderColor: colors.border,
   },
-  followBtnText: { ...typography.button, fontSize: 11, color: colors.onAccent, letterSpacing: 1.4 },
+  followBtnText: { ...typography.button, color: colors.onAccent, letterSpacing: 1.5 },
   followBtnTextActive: { color: colors.textPrimary },
 
-  rule: { height: borders.hairline, backgroundColor: colors.border, marginHorizontal: spacing.xl, marginVertical: spacing.lg },
+  rule: {
+    height: borders.hairline, backgroundColor: colors.borderHairline,
+    marginHorizontal: spacing.gutter, marginVertical: spacing.md,
+  },
 
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: spacing.xl },
-  stat: { alignItems: 'center' },
-  statNum: { ...typography.dinnerTitle, fontSize: 24, color: colors.textPrimary },
-  statLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 1 },
+  // Stats
+  statsRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.gutter },
+  stat: { flex: 1, alignItems: 'center' },
+  statNum: { ...typography.numeral, color: colors.textPrimary, fontSize: 24 },
+  statLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 2, fontSize: 8, marginTop: 2 },
+  statSep: { width: borders.hairline, height: 28, backgroundColor: colors.borderHairline },
 
-  sectionLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 2, paddingHorizontal: spacing.xl, marginBottom: spacing.xs },
-  bio: { ...typography.standfirst, color: colors.textSecondary, paddingHorizontal: spacing.xl },
-  bodyText: { ...typography.body, color: colors.textPrimary, paddingHorizontal: spacing.xl },
+  // Sections
+  sectionLabel: {
+    ...typography.label, color: colors.textMuted, letterSpacing: 2.5,
+    paddingHorizontal: spacing.gutter, marginBottom: spacing.xs,
+  },
+  bio: { ...typography.standfirst, color: colors.textSecondary, paddingHorizontal: spacing.gutter },
+
+  // Reviews
+  reviewCard: {
+    marginHorizontal: spacing.gutter, marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: borders.hairline, borderBottomColor: colors.borderHairline,
+  },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  reviewAvatar: {
+    width: 32, height: 32, borderRadius: radius.pill,
+    backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center',
+  },
+  reviewAvatarText: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 13 },
+  reviewName: { ...typography.body, fontWeight: '600', color: colors.textPrimary, fontSize: 13, marginBottom: 2 },
+  reviewDate: { ...typography.price, color: colors.textMuted, fontSize: 10 },
+  reviewComment: {
+    ...typography.body, color: colors.textSecondary, marginTop: spacing.xs,
+    marginLeft: 32 + spacing.xs, lineHeight: 20,
+  },
+  emptyReviews: {
+    ...typography.standfirst, color: colors.textMuted, textAlign: 'center',
+    paddingHorizontal: spacing.gutter, paddingVertical: spacing.lg,
+    fontSize: 14,
+  },
 });

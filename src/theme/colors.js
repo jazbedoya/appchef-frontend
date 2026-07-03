@@ -57,6 +57,7 @@ export const colors = {
   error: '#D32F2F',
   errorLight: '#FDECEA',
   success: '#2E7D32',
+  starFilled: '#BF4726',
   starEmpty: '#D0C9BC',
   primary: '#1A1613',
   placeholder: '#B3A898',
