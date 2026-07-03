@@ -7,7 +7,7 @@ const HOST = Platform.OS === 'web' ? 'localhost' : '192.168.1.99';
 
 export const USER_SERVICE_URL = `http://${HOST}:8000`;
 export const RESERVATION_SERVICE_URL = `http://${HOST}:8002`;
-export const CHAT_SERVICE_URL = `http://${HOST}:8004`;
+export const CHAT_SERVICE_URL = `http://${HOST}:8005`;
 
 const createInstance = (baseURL) => {
   const instance = axios.create({

@@ -1,9 +1,9 @@
-// ChatScreen.js — Rediseño editorial: lista de conversaciones + chat WebSocket
+// ChatScreen.js — Editorial: lista de rooms + chat + panel de miembros con follow
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/core';
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
@@ -17,14 +17,14 @@ import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { sizes } from '../theme/sizes';
 import { typography } from '../theme/typography';
-import { chatApi, CHAT_SERVICE_URL } from '../services/api';
+import { chatApi, userApi, CHAT_SERVICE_URL } from '../services/api';
 
 const WS_BASE = CHAT_SERVICE_URL.replace('http', 'ws');
 
 const ROOM_EMOJIS = {
-  italiana: '🍝', japonesa: '🍣', vegana: '🥗',
-  española: '🥘', tapas: '🥘', peruana: '🍹',
-  mediterr: '🫒', default: '🍽️',
+  italiana: '\uD83C\uDF5D', japonesa: '\uD83C\uDF63', vegana: '\uD83E\uDD57',
+  española: '\uD83E\uDD58', tapas: '\uD83E\uDD58', peruana: '\uD83C\uDF79',
+  mediterr: '\uD83E\uDED2', default: '\uD83C\uDF7D\uFE0F',
 };
 const getEmoji = (name) => {
   if (!name) return ROOM_EMOJIS.default;
@@ -41,39 +41,58 @@ const timeAgo = (iso) => {
   return `${Math.floor(h / 24)} d`;
 };
 
-export default function ChatScreen() {
+export default function ChatScreen({ route, navigation }) {
   const user = useSelector(selectUser);
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openRoom, setOpenRoom] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  const [membersVisible, setMembersVisible] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [memberProfiles, setMemberProfiles] = useState({});
+  const [followLoading, setFollowLoading] = useState(null);
   const wsRef = useRef(null);
   const flatRef = useRef(null);
+
+  const openRoomId = route?.params?.openRoomId;
+  const roomName = route?.params?.roomName;
 
   // ─── Load rooms ───
   const loadRooms = useCallback(async () => {
     try {
       const res = await chatApi.get('/rooms/my-rooms');
-      setRooms(res.data.rooms || []);
-    } catch { /* no rooms yet */ }
+      const seen = new Set();
+      const unique = (res.data.rooms || []).filter(r => {
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      });
+      setRooms(unique);
+    } catch {}
     setLoading(false);
   }, []);
 
   useFocusEffect(useCallback(() => { loadRooms(); }, [loadRooms]));
 
+  // Auto-open room from EventDetail
+  useEffect(() => {
+    if (!openRoomId || openRoom) return;
+    const found = rooms.find(r => r.id === openRoomId);
+    if (found) setOpenRoom(found);
+    else if (openRoomId && roomName) setOpenRoom({ id: openRoomId, name: roomName });
+  }, [openRoomId, rooms]);
+
   // ─── Open room → connect WS ───
   useEffect(() => {
     if (!openRoom) return;
-    const loadHistory = async () => {
+    (async () => {
       try {
         const res = await chatApi.get(`/rooms/${openRoom.id}/messages?limit=50`);
         setMessages(res.data || []);
       } catch {}
-    };
-    loadHistory();
-
-    const token = AsyncStorage.getItem('@appchef:access_token').then((t) => {
+    })();
+    AsyncStorage.getItem('@appchef:access_token').then((t) => {
       const ws = new WebSocket(`${WS_BASE}/ws/${openRoom.id}?token=${t || 'anon'}`);
       ws.onmessage = (evt) => {
         try {
@@ -86,7 +105,6 @@ export default function ChatScreen() {
       };
       wsRef.current = ws;
     });
-
     return () => { wsRef.current?.close(); wsRef.current = null; };
   }, [openRoom]);
 
@@ -102,6 +120,62 @@ export default function ChatScreen() {
     setInput('');
   };
 
+  // ─── Members panel ───
+  const openMembers = async () => {
+    if (!openRoom) return;
+    setMembersVisible(true);
+    try {
+      const res = await chatApi.get(`/rooms/${openRoom.id}/members`);
+      const seen = new Set();
+      const mems = (res.data || []).filter(m => {
+        if (!m.user_id || seen.has(m.user_id)) return false;
+        seen.add(m.user_id);
+        return true;
+      });
+      setMembers(mems);
+      // Fetch profiles for each member
+      const profiles = {};
+      await Promise.all(mems.map(async (m) => {
+        if (!m.user_id || m.user_id === user?.id) return;
+        try {
+          const r = await userApi.get(`/users/${m.user_id}`);
+          profiles[m.user_id] = r.data;
+        } catch {
+          profiles[m.user_id] = { username: m.user_name };
+        }
+      }));
+      setMemberProfiles(profiles);
+    } catch {}
+  };
+
+  const handleFollow = async (targetId) => {
+    setFollowLoading(targetId);
+    const profile = memberProfiles[targetId];
+    const isFollowing = profile?.is_following;
+    try {
+      if (isFollowing) {
+        await userApi.delete(`/users/${targetId}/follow`);
+      } else {
+        await userApi.post(`/users/${targetId}/follow`);
+      }
+      setMemberProfiles(prev => ({
+        ...prev,
+        [targetId]: { ...prev[targetId], is_following: !isFollowing },
+      }));
+    } catch (e) {
+      Alert.alert('Error', e.userMessage || 'No se pudo completar');
+    }
+    setFollowLoading(null);
+  };
+
+  const closeRoom = () => {
+    setOpenRoom(null);
+    setMessages([]);
+    setMembersVisible(false);
+    setMembers([]);
+    setMemberProfiles({});
+  };
+
   // ─── Chat view ───
   if (openRoom) {
     const userId = user?.id;
@@ -109,13 +183,18 @@ export default function ChatScreen() {
       <SafeAreaView style={st.safe} edges={['top']}>
         {/* Header */}
         <View style={st.chatHeader}>
-          <Pressable onPress={() => { setOpenRoom(null); setMessages([]); }} hitSlop={12}>
+          <Pressable onPress={closeRoom} hitSlop={12}>
             <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           </Pressable>
           <View style={st.chatHeaderBody}>
             <Text style={st.chatHeaderTitle} numberOfLines={1}>{openRoom.name}</Text>
-            <Text style={st.chatHeaderSub}>{openRoom.host_name ? `Chef ${openRoom.host_name}` : ''}</Text>
+            <Text style={st.chatHeaderSub}>
+              {openRoom.host_name ? `Chef ${openRoom.host_name}` : ''}
+            </Text>
           </View>
+          <Pressable onPress={openMembers} hitSlop={12}>
+            <Ionicons name="people-outline" size={22} color={colors.textPrimary} />
+          </Pressable>
         </View>
         <View style={st.ruleFull} />
 
@@ -157,6 +236,83 @@ export default function ChatScreen() {
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+
+        {/* ── Members Modal ── */}
+        <Modal visible={membersVisible} animationType="slide" onRequestClose={() => setMembersVisible(false)}>
+          <SafeAreaView style={st.safe} edges={['top', 'bottom']}>
+            {/* Header with close */}
+            <View style={st.membersTopBar}>
+              <Pressable onPress={() => setMembersVisible(false)} hitSlop={16} style={st.membersCloseBtn}>
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </Pressable>
+              <Text style={st.membersTopTitle}>Comensales</Text>
+              <Text style={st.membersTopCount}>{members.length}</Text>
+            </View>
+            <View style={st.ruleNoMargin} />
+
+            <FlatList
+              data={members}
+              keyExtractor={(m) => m.user_id}
+              contentContainerStyle={st.membersList}
+              renderItem={({ item }) => {
+                const isMe = item.user_id === userId;
+                const profile = memberProfiles[item.user_id];
+                const displayName = profile?.profile?.first_name
+                  ? `${profile.profile.first_name} ${profile.profile.last_name || ''}`.trim()
+                  : profile?.username || item.user_name;
+                const isFollowing = profile?.is_following;
+                const isHost = item.role === 'HOST';
+
+                return (
+                  <Pressable
+                    style={st.memberRow}
+                    onPress={() => {
+                      if (!isMe) {
+                        setMembersVisible(false);
+                        navigation.navigate('Inicio', {
+                          screen: 'ChefProfile',
+                          params: { userId: item.user_id, userName: displayName },
+                        });
+                      }
+                    }}
+                    disabled={isMe}
+                  >
+                    <View style={st.memberAvatar}>
+                      <Text style={st.memberInitial}>
+                        {(displayName || '?')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={st.memberNameRow}>
+                        <Text style={st.memberName}>{displayName}</Text>
+                        {isHost && <Text style={st.memberBadge}>CHEF</Text>}
+                        {isMe && <Text style={st.memberBadgeMe}>T\u00DA</Text>}
+                      </View>
+                      {profile?.profile?.bio ? (
+                        <Text style={st.memberBio} numberOfLines={1}>{profile.profile.bio}</Text>
+                      ) : null}
+                    </View>
+                    {!isMe && (
+                      <Pressable
+                        style={[st.followBtn, isFollowing && st.followBtnActive]}
+                        onPress={() => handleFollow(item.user_id)}
+                        disabled={followLoading === item.user_id}
+                      >
+                        {followLoading === item.user_id ? (
+                          <ActivityIndicator size="small" color={isFollowing ? colors.textPrimary : colors.onAccent} />
+                        ) : (
+                          <Text style={[st.followBtnText, isFollowing && st.followBtnTextActive]}>
+                            {isFollowing ? 'SIGUIENDO' : 'SEGUIR'}
+                          </Text>
+                        )}
+                      </Pressable>
+                    )}
+                  </Pressable>
+                );
+              }}
+            />
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -168,7 +324,9 @@ export default function ChatScreen() {
         <Text style={st.title}>Mensajes</Text>
       </View>
       <Text style={st.standfirst}>
-        {rooms.length > 0 ? `${rooms.length} conversación${rooms.length > 1 ? 'es' : ''} abierta${rooms.length > 1 ? 's' : ''}.` : 'Sin conversaciones aún.'}
+        {rooms.length > 0
+          ? `${rooms.length} conversaci\u00F3n${rooms.length > 1 ? 'es' : ''} abierta${rooms.length > 1 ? 's' : ''}.`
+          : 'Sin conversaciones a\u00FAn.'}
       </Text>
       <View style={st.ruleFull} />
 
@@ -194,7 +352,7 @@ export default function ChatScreen() {
                   <Text style={st.rowTime}>{timeAgo(item.last_message_at)}</Text>
                 </View>
                 <Text style={st.rowPreview} numberOfLines={1}>
-                  {item.last_message || 'Sin mensajes aún'}
+                  {item.last_message || 'Sin mensajes a\u00FAn'}
                 </Text>
               </View>
             </Pressable>
@@ -205,6 +363,8 @@ export default function ChatScreen() {
   );
 }
 
+// ─── Styles ───
+
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
 
@@ -212,7 +372,8 @@ const st = StyleSheet.create({
   header: { paddingHorizontal: spacing.gutter, paddingTop: spacing.lg },
   title: { ...typography.sectionTitle, color: colors.textPrimary },
   standfirst: { ...typography.standfirst, fontSize: 15, color: colors.textMuted, paddingHorizontal: spacing.gutter, marginTop: spacing.xs, marginBottom: spacing.md },
-  ruleFull: { height: borders.hairline, backgroundColor: colors.border, marginHorizontal: spacing.gutter },
+  ruleFull: { height: borders.hairline, backgroundColor: colors.borderHairline, marginHorizontal: spacing.gutter },
+  ruleNoMargin: { height: borders.hairline, backgroundColor: colors.borderHairline },
   listContent: { paddingHorizontal: spacing.gutter },
   empty: { paddingHorizontal: spacing.gutter, paddingTop: spacing.xxl, alignItems: 'center' },
   emptyText: { ...typography.body, color: colors.textMuted, textAlign: 'center' },
@@ -240,7 +401,7 @@ const st = StyleSheet.create({
   },
   chatHeaderBody: { flex: 1 },
   chatHeaderTitle: { ...typography.dinnerTitle, color: colors.textPrimary },
-  chatHeaderSub: { ...typography.label, color: colors.textMuted, letterSpacing: 0 },
+  chatHeaderSub: { ...typography.price, color: colors.textMuted },
 
   msgList: { padding: spacing.gutter, paddingBottom: spacing.xl },
   systemMsg: { ...typography.label, color: colors.textMuted, textAlign: 'center', marginVertical: spacing.sm, letterSpacing: 0 },
@@ -254,16 +415,95 @@ const st = StyleSheet.create({
   inputBar: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     paddingHorizontal: spacing.gutter, paddingVertical: spacing.sm,
-    borderTopWidth: borders.hairline, borderTopColor: colors.border,
+    borderTopWidth: borders.hairline, borderTopColor: colors.borderHairline,
     backgroundColor: colors.background,
   },
   inputField: {
     flex: 1, ...typography.body, color: colors.textPrimary,
-    backgroundColor: colors.surface, borderRadius: radius.xs,
+    backgroundColor: colors.surface,
     paddingHorizontal: spacing.sm, paddingVertical: spacing.xs + 2,
   },
   sendBtn: {
     width: 36, height: 36, borderRadius: radius.pill,
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Members modal
+  membersTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.gutter,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  membersCloseBtn: {
+    width: 36, height: 36,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: borders.hairline,
+    borderColor: colors.borderHairline,
+    borderRadius: radius.pill,
+  },
+  membersTopTitle: {
+    ...typography.dinnerTitle,
+    color: colors.textPrimary,
+    fontSize: 20,
+    flex: 1,
+  },
+  membersTopCount: {
+    ...typography.numeral,
+    color: colors.textMuted,
+    fontSize: 18,
+  },
+  membersList: {
+    paddingHorizontal: spacing.gutter,
+    paddingTop: spacing.sm,
+  },
+  memberRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: borders.hairline, borderBottomColor: colors.borderHairline,
+  },
+  memberAvatar: {
+    width: 42, height: 42, borderRadius: radius.pill,
+    backgroundColor: colors.textPrimary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  memberInitial: {
+    ...typography.dinnerTitle, color: colors.onAccent, fontSize: 16,
+  },
+  memberNameRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+  },
+  memberName: {
+    ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 16,
+  },
+  memberBadge: {
+    ...typography.label, color: colors.accent, fontSize: 8, letterSpacing: 1.5,
+    backgroundColor: 'rgba(191,71,38,0.1)',
+    paddingHorizontal: spacing.xxs + 2,
+    paddingVertical: 1,
+  },
+  memberBadgeMe: {
+    ...typography.label, color: colors.textMuted, fontSize: 8, letterSpacing: 1,
+  },
+  memberBio: {
+    ...typography.body, color: colors.textMuted, fontSize: 12, marginTop: 1,
+  },
+  followBtn: {
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.xxs + 2,
+    paddingHorizontal: spacing.sm,
+  },
+  followBtnActive: {
+    backgroundColor: 'transparent',
+    borderWidth: borders.medium,
+    borderColor: colors.border,
+  },
+  followBtnText: {
+    ...typography.button, color: colors.onAccent, fontSize: 9,
+  },
+  followBtnTextActive: {
+    color: colors.textPrimary,
   },
 });

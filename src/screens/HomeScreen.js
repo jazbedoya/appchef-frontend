@@ -67,7 +67,7 @@ const HomeScreen = ({ navigation }) => {
   }, [dispatch]);
 
   const featured = events[0] || null;
-  const cartelera = events.slice(1, 5);
+  const cartelera = events.slice(1);
 
   if (isLoading && events.length === 0) {
     return (

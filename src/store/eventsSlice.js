@@ -49,6 +49,39 @@ export const createReservation = createAsyncThunk(
   },
 );
 
+export const fetchPendingApprovals = createAsyncThunk(
+  'events/fetchPendingApprovals',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await eventsService.getPendingApprovals();
+    } catch (error) {
+      return rejectWithValue(error.userMessage || 'Error cargando solicitudes');
+    }
+  },
+);
+
+export const approveReservation = createAsyncThunk(
+  'events/approveReservation',
+  async (reservationId, { rejectWithValue }) => {
+    try {
+      return await eventsService.confirmReservation(reservationId);
+    } catch (error) {
+      return rejectWithValue(error.userMessage || 'Error al aprobar');
+    }
+  },
+);
+
+export const rejectReservation = createAsyncThunk(
+  'events/rejectReservation',
+  async (reservationId, { rejectWithValue }) => {
+    try {
+      return await eventsService.rejectReservation(reservationId);
+    } catch (error) {
+      return rejectWithValue(error.userMessage || 'Error al rechazar');
+    }
+  },
+);
+
 const eventsSlice = createSlice({
   name: 'events',
   initialState: {
@@ -56,6 +89,7 @@ const eventsSlice = createSlice({
     nearbyEvents: [],
     currentEvent: null,
     myReservations: [],
+    pendingApprovals: [],
     isLoading: false,
     isLoadingDetail: false,
     isBooking: false,
@@ -100,11 +134,24 @@ const eventsSlice = createSlice({
         state.lastBooking = action.payload;
         state.myReservations = [action.payload, ...state.myReservations];
       })
-      .addCase(createReservation.rejected, (state, action) => { state.isBooking = false; state.bookingError = action.payload; });
+      .addCase(createReservation.rejected, (state, action) => { state.isBooking = false; state.bookingError = action.payload; })
+
+      .addCase(fetchPendingApprovals.fulfilled, (state, action) => {
+        state.pendingApprovals = action.payload?.reservations || [];
+      })
+
+      .addCase(approveReservation.fulfilled, (state, action) => {
+        state.pendingApprovals = state.pendingApprovals.filter(r => r.id !== action.payload.id);
+      })
+
+      .addCase(rejectReservation.fulfilled, (state, action) => {
+        state.pendingApprovals = state.pendingApprovals.filter(r => r.id !== action.payload.id);
+      });
   },
 });
 
 export const { setCurrentEvent, clearEvents, clearCurrentEvent, clearError, clearBookingError } = eventsSlice.actions;
+export const selectPendingApprovals = state => state.events.pendingApprovals;
 export const selectEvents = state => state.events.events;
 export const selectNearbyEvents = state => state.events.nearbyEvents;
 export const selectEventsLoading = state => state.events.isLoading;

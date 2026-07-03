@@ -1,30 +1,26 @@
+// EventDetailScreen.js — Rediseño editorial: detalle de cena
 import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  Image,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Dimensions,
+  View, Text, ScrollView, Image, StyleSheet,
+  TouchableOpacity, ActivityIndicator, Alert,
+  Platform, Dimensions, Pressable,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons as Icon } from '@expo/vector-icons';
 
 import {
-  fetchEventById,
-  createReservation,
-  selectCurrentEvent,
-  selectIsLoadingDetail,
-  selectIsBooking,
+  fetchEventById, createReservation,
+  selectCurrentEvent, selectIsLoadingDetail, selectIsBooking, selectMyReservations,
 } from '../store/eventsSlice';
 import { selectUser } from '../store/authSlice';
+import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
+import { borders } from '../theme/borders';
+import { radius } from '../theme/radius';
+import { typography } from '../theme/typography';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const HERO_HEIGHT = Math.round(SCREEN_HEIGHT * 0.38);
+const { width: SW, height: SH } = Dimensions.get('window');
+const HERO_H = Math.round(SH * 0.40);
 
 const CUISINE_IMAGES = {
   Italiana:     'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80',
@@ -37,155 +33,115 @@ const CUISINE_IMAGES = {
 };
 const DEFAULT_IMG = 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80';
 
-function getEventHeroImage(event) {
-  if (event?.cover_image_url) return event.cover_image_url;
-  const tags = Array.isArray(event?.cuisine_type) ? event.cuisine_type : [];
-  return CUISINE_IMAGES[tags[0]] || DEFAULT_IMG;
+function heroImage(ev) {
+  if (ev?.cover_image_url) return ev.cover_image_url;
+  const t = Array.isArray(ev?.cuisine_type) ? ev.cuisine_type : [];
+  return CUISINE_IMAGES[t[0]] || DEFAULT_IMG;
 }
 
-// ─── Color constants — Elegancia Gastronómica ───
-const CAFE = '#2C3E2D';
-const BEIGE = '#EDE8DF';
-const BEIGE_LIGHT = '#FDFAF5';
-const TERRACOTA = '#D4A853';
-const WHITE = '#FFFFFF';
-const GRAY_200 = '#E2D9C8';
-const GRAY_500 = '#7A7A6E';
-const GRAY_700 = '#3E3E38';
+// ─── Component ───
 
 const EventDetailScreen = ({ route, navigation }) => {
   const { eventId } = route.params;
   const dispatch = useDispatch();
-
   const event = useSelector(selectCurrentEvent);
   const isLoadingDetail = useSelector(selectIsLoadingDetail);
   const isBooking = useSelector(selectIsBooking);
   const user = useSelector(selectUser);
+  const myReservations = useSelector(selectMyReservations);
 
   const [partySize, setPartySize] = useState(1);
   const [chatRoomId, setChatRoomId] = useState(null);
 
-  useEffect(() => {
-    dispatch(fetchEventById(eventId));
-  }, [dispatch, eventId]);
+  useEffect(() => { dispatch(fetchEventById(eventId)); }, [dispatch, eventId]);
 
+  // Chat room: fetch or create for confirmed guests / host
   useEffect(() => {
-    if (!eventId) return;
+    if (!eventId || !user?.id) return;
+    const confirmed = myReservations.find(r => r.event_id === eventId && r.status === 'confirmed');
+    const own = user && event?.host_id && user.id === event.host_id;
+    if (!confirmed && !own) return;
     import('../services/api').then(({ chatApi }) => {
       chatApi.get(`/rooms/event/${eventId}`)
-        .then(res => setChatRoomId(res.data.id))
-        .catch(() => {});
+        .then(res => {
+          setChatRoomId(res.data.id);
+          if (confirmed) {
+            const p = user?.profile || {};
+            const n = [p.first_name, p.last_name].filter(Boolean).join(' ').trim() || user?.username || 'Invitado';
+            chatApi.post(`/rooms/event/${eventId}/join`, { user_id: user.id, user_name: n }).catch(() => {});
+          }
+        })
+        .catch(() => {
+          chatApi.post('/rooms/create', { event_id: eventId, name: event?.title || 'Chat' })
+            .then(res => setChatRoomId(res.data.id)).catch(() => {});
+        });
     });
-  }, [eventId]);
+  }, [eventId, user?.id, myReservations, event?.host_id]);
 
-  // ─── Loading state ───
+  // ─── Loading ───
   if (isLoadingDetail || (!event && !isLoadingDetail)) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={CAFE} />
-        <Text style={styles.loadingText}>Cargando...</Text>
+      <View style={s.center}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
-
-  // Event not found after loading
   if (!event) {
     return (
-      <View style={styles.loadingContainer}>
-        <Icon name="alert-circle-outline" size={48} color={TERRACOTA} />
-        <Text style={styles.loadingText}>Evento no encontrado</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>Volver</Text>
-        </TouchableOpacity>
+      <View style={s.center}>
+        <Icon name="alert-circle-outline" size={40} color={colors.accent} />
+        <Text style={s.emptyText}>Evento no encontrado</Text>
+        <Pressable style={s.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={s.backBtnText}>VOLVER</Text>
+        </Pressable>
       </View>
     );
   }
 
+  // ─── Derived data ───
   const {
-    title = 'Sin título',
-    description,
-    cover_image_url,
-    event_date,
-    price_per_person,
-    max_guests,
-    confirmed_guests = 0,
-    available_spots,
-    cuisine_type,
-    host,
-    host_name,
-    city,
-    state: eventState,
-    address_line1,
-    menu,
-    status,
+    title = 'Sin título', description, event_date, price_per_person,
+    max_guests, confirmed_guests = 0, available_spots, cuisine_type,
+    host, host_name, city, state: evState, address_line1, menu, status,
   } = event;
 
-  const cuisineTags = Array.isArray(cuisine_type)
-    ? cuisine_type
-    : cuisine_type
-    ? [cuisine_type]
-    : [];
+  const cuisineTags = Array.isArray(cuisine_type) ? cuisine_type : cuisine_type ? [cuisine_type] : [];
+  const spots = available_spots != null ? available_spots : max_guests != null ? max_guests - confirmed_guests : null;
+  const soldOut = (spots != null && spots <= 0) || status === 'sold_out';
+  const isOwn = user && event.host_id && user.id === event.host_id;
+  const myRes = myReservations.find(r => r.event_id === event.id && ['pending_approval', 'confirmed', 'pending_payment'].includes(r.status));
+  const hostName = host_name || (host?.profile?.first_name ? `${host.profile.first_name} ${host.profile.last_name || ''}`.trim() : host?.first_name || 'Chef Anónimo');
 
-  const availableSpots = available_spots != null
-    ? available_spots
-    : max_guests != null
-    ? max_guests - confirmed_guests
-    : null;
-
-  const isSoldOut = (availableSpots != null && availableSpots <= 0) || status === 'sold_out';
-  const isOwnEvent = user && event.host_id && user.id === event.host_id;
-
-  const hostDisplayName =
-    host_name ||
-    (host?.profile?.first_name
-      ? `${host.profile.first_name} ${host.profile.last_name || ''}`.trim()
-      : host?.first_name || 'Chef Anónimo');
-
-  const formattedDate = event_date
-    ? new Date(event_date).toLocaleDateString('es-ES', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      })
+  const fmtDate = event_date
+    ? new Date(event_date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
     : 'Fecha por confirmar';
-
-  const formattedTime = event_date
-    ? new Date(event_date).toLocaleTimeString('es-ES', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
+  const fmtTime = event_date
+    ? new Date(event_date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
     : '';
-
-  const pricePerPerson = parseFloat(price_per_person || 0);
-  const totalPrice = (pricePerPerson * partySize).toFixed(2);
+  const price = parseFloat(price_per_person || 0);
+  const total = (price * partySize).toFixed(2);
+  const menuCourses = menu?.courses || (Array.isArray(menu) ? menu : null);
 
   const handleReserve = () => {
-    if (!user) {
-      Alert.alert('Inicio de sesión requerido', 'Por favor inicia sesión para reservar.');
-      return;
-    }
+    if (!user) { Alert.alert('Inicia sesión', 'Necesitas una cuenta para reservar.'); return; }
     Alert.alert(
-      'Confirmar reserva',
-      `Reservar ${partySize} plaza${partySize > 1 ? 's' : ''} en "${title}"?\n\nTotal: €${totalPrice}`,
+      'Solicitar plaza',
+      `${partySize} plaza${partySize > 1 ? 's' : ''} en "${title}"\nTotal: \u20AC${total}\n\nEl anfitrión confirmará tu solicitud.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Confirmar',
+          text: 'Enviar solicitud',
           onPress: async () => {
-            const result = await dispatch(createReservation({
-              eventId: event.id,
-              partySize,
-            }));
+            const result = await dispatch(createReservation({ eventId: event.id, partySize }));
             if (createReservation.fulfilled.match(result)) {
-              const code = result.payload?.confirmation_code || result.payload?.id || '';
-              Alert.alert(
-                '¡Reserva confirmada!',
-                code ? `Código de confirmación: ${code}` : 'Tu reserva ha sido confirmada.',
-                [{ text: 'Perfecto', onPress: () => navigation.goBack() }],
-              );
+              const st = result.payload?.status;
+              if (st === 'confirmed') {
+                Alert.alert('Reserva confirmada', `Código: ${result.payload?.confirmation_code || ''}`, [{ text: 'Perfecto', onPress: () => navigation.goBack() }]);
+              } else {
+                Alert.alert('Solicitud enviada', 'El anfitrión revisará tu solicitud y te confirmaremos cuando acepte.', [{ text: 'Entendido', onPress: () => navigation.goBack() }]);
+              }
             } else {
-              Alert.alert('Error', result.payload || 'No se pudo completar la reserva. Inténtalo de nuevo.');
+              Alert.alert('Error', result.payload || 'No se pudo completar la reserva.');
             }
           },
         },
@@ -193,580 +149,484 @@ const EventDetailScreen = ({ route, navigation }) => {
     );
   };
 
-  const menuCourses = menu?.courses || (Array.isArray(menu) ? menu : null);
-
+  // ─── Render ───
   return (
-    <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Hero image */}
-        <View style={styles.heroContainer}>
+    <View style={s.root}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+
+        {/* ── Hero ── */}
+        <View style={s.hero}>
           {Platform.OS === 'web' ? (
-            <div style={{
-              width: '100%',
-              height: HERO_HEIGHT,
-              backgroundImage: `url(${getEventHeroImage(event)})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }} />
+            <div style={{ width: '100%', height: HERO_H, backgroundImage: `url(${heroImage(event)})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
           ) : (
-            <Image
-              source={{ uri: getEventHeroImage(event) }}
-              style={styles.heroImage}
-              resizeMode="cover"
-            />
+            <Image source={{ uri: heroImage(event) }} style={s.heroImg} resizeMode="cover" />
           )}
-          <View style={styles.heroGradient} />
+          {/* Scrim overlay */}
+          <View style={s.heroScrim} />
+          {/* Overline on hero */}
+          <View style={s.heroOverlay}>
+            <Text style={s.heroOverline}>
+              {cuisineTags[0] || ''}{city ? ` \u00B7 ${city}` : ''}
+            </Text>
+            <Text style={s.heroPrice}>{'\u20AC'}{price.toFixed(0)}</Text>
+          </View>
         </View>
 
-        {/* Content */}
-        <View style={styles.content}>
+        {/* ── Content ── */}
+        <View style={s.content}>
+
           {/* Title */}
-          <Text style={styles.title}>{title}</Text>
+          <Text style={s.title}>{title}</Text>
 
-          {/* Host info — pulsable */}
-          <TouchableOpacity
-            style={styles.hostRow}
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('ChefProfile', { userId: event.host_id, userName: hostDisplayName })}
-          >
-            <View style={styles.hostIconCircle}>
-              <Text style={styles.hostInitial}>{hostDisplayName[0]?.toUpperCase() || '?'}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.hostLabel}>Anfitrión</Text>
-              <Text style={styles.hostName}>{hostDisplayName}</Text>
-            </View>
-            <Icon name="chevron-forward" size={16} color={GRAY_500} />
-          </TouchableOpacity>
+          {/* Overline: date + time */}
+          <Text style={s.dateLine}>
+            {fmtDate}{fmtTime ? ` \u00B7 ${fmtTime}` : ''}
+          </Text>
 
-          {/* Info grid */}
-          <View style={styles.infoGrid}>
-            <View style={styles.infoCard}>
-              <Icon name="calendar" size={20} color={TERRACOTA} />
-              <Text style={styles.infoCardTitle}>{formattedDate}</Text>
-              {formattedTime ? <Text style={styles.infoCardSub}>{formattedTime}</Text> : null}
-            </View>
-            <View style={styles.infoCard}>
-              <Icon name="location" size={20} color={TERRACOTA} />
-              <Text style={styles.infoCardTitle}>
-                {city || 'Ciudad no especificada'}
-                {eventState ? `, ${eventState}` : ''}
-              </Text>
-              <Text style={styles.infoCardSub}>
-                {address_line1 || 'Dirección compartida tras reservar'}
-              </Text>
-            </View>
-            <View style={styles.infoCard}>
-              <Icon name="people" size={20} color={TERRACOTA} />
-              <Text style={styles.infoCardTitle}>
-                {availableSpots != null ? `${availableSpots} plazas` : `${max_guests || '?'} plazas`}
-              </Text>
-              <Text style={styles.infoCardSub}>
-                {max_guests ? `de ${max_guests} totales` : 'disponibles'}
-              </Text>
-            </View>
-            <View style={styles.infoCard}>
-              <Icon name="pricetag" size={20} color={TERRACOTA} />
-              <Text style={styles.infoCardTitle}>€{pricePerPerson.toFixed(0)}</Text>
-              <Text style={styles.infoCardSub}>por persona</Text>
-            </View>
-          </View>
+          <View style={s.rule} />
 
-          {/* Cuisine tags */}
-          {cuisineTags.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Cocina</Text>
-              <View style={styles.tagsRow}>
-                {cuisineTags.map((tag, index) => (
-                  <View key={`${tag}-${index}`} style={styles.cuisineTag}>
-                    <Text style={styles.cuisineTagText}>{tag}</Text>
-                  </View>
-                ))}
+          {/* ── Status banner (guest) ── */}
+          {myRes && (
+            <View style={[s.statusCard, myRes.status === 'confirmed' ? s.statusConfirmed : s.statusPending]}>
+              <Icon
+                name={myRes.status === 'confirmed' ? 'checkmark-circle' : 'time-outline'}
+                size={22}
+                color={myRes.status === 'confirmed' ? colors.success : colors.accent}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[s.statusTitle, { color: myRes.status === 'confirmed' ? colors.success : colors.accent }]}>
+                  {myRes.status === 'confirmed' ? 'Reserva confirmada'
+                    : myRes.status === 'pending_approval' ? 'Solicitud pendiente'
+                    : 'Procesando pago'}
+                </Text>
+                {myRes.confirmation_code && (
+                  <Text style={s.statusSub}>Código: {myRes.confirmation_code}</Text>
+                )}
+                {myRes.status === 'pending_approval' && (
+                  <Text style={s.statusSub}>El anfitrión revisará tu solicitud</Text>
+                )}
               </View>
             </View>
           )}
 
-          {/* Description */}
+          {/* ── Chat button ── */}
+          {(myRes?.status === 'confirmed' || isOwn) && chatRoomId && (
+            <Pressable
+              style={s.chatBtn}
+              onPress={() => navigation.navigate('Chat', {
+                screen: 'ChatMain',
+                params: { openRoomId: chatRoomId, roomName: title, eventId: event.id },
+              })}
+            >
+              <Icon name="chatbubbles-outline" size={18} color={colors.onAccent} />
+              <Text style={s.chatBtnText}>CHAT DEL GRUPO</Text>
+              <Icon name="chevron-forward" size={14} color={colors.onAccent} />
+            </Pressable>
+          )}
+
+          {/* ── Quick info row ── */}
+          <View style={s.infoRow}>
+            <InfoItem icon="location-outline" text={city || 'Sin ubicación'} sub={address_line1 || (myRes?.status === 'confirmed' ? null : 'Tras confirmar')} />
+            <View style={s.infoSep} />
+            <InfoItem icon="people-outline" text={spots != null ? `${spots} plazas` : `${max_guests || '?'}`} sub={`de ${max_guests || '?'} totales`} />
+            <View style={s.infoSep} />
+            <InfoItem icon="pricetag-outline" text={`\u20AC${price.toFixed(0)}`} sub="por persona" />
+          </View>
+
+          <View style={s.rule} />
+
+          {/* ── Cuisine tags ── */}
+          {cuisineTags.length > 0 && (
+            <View style={s.tagsRow}>
+              {cuisineTags.map((t, i) => (
+                <View key={`${t}-${i}`} style={s.tag}>
+                  <Text style={s.tagText}>{t}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* ── Description ── */}
           {description ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Sobre esta cena</Text>
-              <Text style={styles.description}>{description}</Text>
+            <View style={s.section}>
+              <Text style={s.sectionLabel}>SOBRE ESTA CENA</Text>
+              <Text style={s.bodyText}>{description}</Text>
             </View>
           ) : null}
 
-          {/* Menu */}
+          {/* ── Menu ── */}
           {menuCourses && menuCourses.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>El menú</Text>
-              {menuCourses.map((course, idx) => (
-                <View key={idx} style={styles.menuCourse}>
-                  <View style={styles.menuCourseNumber}>
-                    <Text style={styles.menuCourseNumberText}>{idx + 1}</Text>
-                  </View>
-                  <View style={styles.menuCourseContent}>
-                    <Text style={styles.menuCourseName}>
-                      {course.name || course.title || `Plato ${idx + 1}`}
-                    </Text>
-                    {course.description ? (
-                      <Text style={styles.menuCourseDesc}>{course.description}</Text>
-                    ) : null}
+            <View style={s.section}>
+              <Text style={s.sectionLabel}>EL MEN\u00DA</Text>
+              {menuCourses.map((c, i) => (
+                <View key={i} style={s.menuItem}>
+                  <Text style={s.menuNum}>{String(i + 1).padStart(2, '0')}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.menuName}>{c.name || c.title || `Plato ${i + 1}`}</Text>
+                    {c.description ? <Text style={s.menuDesc}>{c.description}</Text> : null}
                   </View>
                 </View>
               ))}
             </View>
           )}
 
-          {/* Host bio — pulsable */}
-          {host?.profile?.bio ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Tu anfitrión</Text>
-              <TouchableOpacity
-                style={styles.hostBioCard}
-                activeOpacity={0.85}
-                onPress={() => navigation.navigate('ChefProfile', { userId: event.host_id, userName: hostDisplayName })}
-              >
-                <View style={styles.hostBioIconCircle}>
-                  <Text style={styles.hostBioInitial}>{hostDisplayName[0]?.toUpperCase() || '?'}</Text>
-                </View>
-                <View style={styles.hostBioInfo}>
-                  <Text style={styles.hostBioName}>{hostDisplayName}</Text>
-                  <Text style={styles.hostBioText} numberOfLines={4}>
-                    {host.profile.bio}
-                  </Text>
-                </View>
-                <Icon name="chevron-forward" size={16} color={GRAY_500} style={{ alignSelf: 'center' }} />
-              </TouchableOpacity>
+          <View style={s.rule} />
+
+          {/* ── Host card ── */}
+          <Pressable
+            style={s.hostCard}
+            onPress={() => navigation.navigate('ChefProfile', { userId: event.host_id, userName: hostName })}
+          >
+            <View style={s.hostAvatar}>
+              <Text style={s.hostInitial}>{hostName[0]?.toUpperCase() || '?'}</Text>
             </View>
-          ) : null}
+            <View style={{ flex: 1 }}>
+              <Text style={s.hostLabel}>ANFITRI\u00D3N</Text>
+              <Text style={s.hostName}>{hostName}</Text>
+              {host?.profile?.bio ? (
+                <Text style={s.hostBio} numberOfLines={2}>{host.profile.bio}</Text>
+              ) : null}
+            </View>
+            <Icon name="chevron-forward" size={16} color={colors.textMuted} style={{ alignSelf: 'center' }} />
+          </Pressable>
 
-          {/* Chat button */}
-          {chatRoomId && (
-            <TouchableOpacity
-              style={styles.chatButton}
-              onPress={async () => {
-                // Auto-join the room so the user appears in /rooms/my-rooms
-                try {
-                  const { chatApi } = await import('../services/api');
-                  const profile = user?.profile || {};
-                  const userName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
-                    || user?.username || 'Invitado';
-                  await chatApi.post(`/rooms/event/${event.id}/join`, {
-                    user_id: user?.id,
-                    user_name: userName,
-                  });
-                } catch (_) {}
-                navigation.navigate('Chat', {
-                  screen: 'ChatMain',
-                  params: { openRoomId: chatRoomId, roomName: title, eventId: event.id },
-                });
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.chatButtonText}>💬 Chat del grupo</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Bottom padding for fixed bar */}
-          <View style={{ height: 110 }} />
+          {/* Bottom padding */}
+          <View style={{ height: myRes || isOwn ? spacing.xxl : 110 }} />
         </View>
       </ScrollView>
 
-      {/* Fixed booking bar */}
-      {!isOwnEvent && (
-        <View style={styles.bookingBar}>
-          <View style={styles.bookingBarPrice}>
-            <Text style={styles.bookingBarPriceAmount}>€{pricePerPerson.toFixed(0)}</Text>
-            <Text style={styles.bookingBarPriceSub}>/pers.</Text>
+      {/* ── Booking bar ── */}
+      {!isOwn && !myRes && (
+        <View style={s.bookingBar}>
+          <View style={s.bookingLeft}>
+            <Text style={s.bookingPrice}>{'\u20AC'}{price.toFixed(0)}</Text>
+            <Text style={s.bookingPriceSub}>/pers.</Text>
           </View>
 
-          {/* Party size selector */}
-          {!isSoldOut && availableSpots != null && (
-            <View style={styles.partySizeRow}>
-              <TouchableOpacity
-                style={styles.partySizeBtn}
-                onPress={() => setPartySize(p => Math.max(1, p - 1))}
-                disabled={partySize <= 1}
-              >
-                <Icon name="remove" size={16} color={partySize > 1 ? CAFE : GRAY_200} />
-              </TouchableOpacity>
-              <Text style={styles.partySizeNum}>{partySize}</Text>
-              <TouchableOpacity
-                style={styles.partySizeBtn}
-                onPress={() => setPartySize(p => Math.min(availableSpots, p + 1))}
-                disabled={partySize >= availableSpots}
-              >
-                <Icon name="add" size={16} color={partySize < availableSpots ? CAFE : GRAY_200} />
-              </TouchableOpacity>
+          {!soldOut && spots != null && (
+            <View style={s.stepper}>
+              <Pressable style={s.stepBtn} onPress={() => setPartySize(p => Math.max(1, p - 1))} disabled={partySize <= 1}>
+                <Icon name="remove" size={16} color={partySize > 1 ? colors.textPrimary : colors.textMuted} />
+              </Pressable>
+              <Text style={s.stepNum}>{partySize}</Text>
+              <Pressable style={s.stepBtn} onPress={() => setPartySize(p => Math.min(spots, p + 1))} disabled={partySize >= spots}>
+                <Icon name="add" size={16} color={partySize < spots ? colors.textPrimary : colors.textMuted} />
+              </Pressable>
             </View>
           )}
 
-          <TouchableOpacity
-            style={[styles.reserveButton, (isSoldOut || isBooking) && styles.reserveButtonDisabled]}
+          <Pressable
+            style={[s.reserveBtn, (soldOut || isBooking) && s.reserveBtnOff]}
             onPress={handleReserve}
-            disabled={isSoldOut || isBooking}
-            activeOpacity={0.85}
+            disabled={soldOut || isBooking}
           >
             {isBooking ? (
-              <ActivityIndicator size="small" color={WHITE} />
+              <ActivityIndicator size="small" color={colors.onAccent} />
             ) : (
-              <Text style={styles.reserveButtonText}>
-                {isSoldOut ? 'Lista de espera' : `Solicitar sitio · €${totalPrice}`}
+              <Text style={s.reserveBtnText}>
+                {soldOut ? 'LISTA DE ESPERA' : `SOLICITAR \u00B7 \u20AC${total}`}
               </Text>
             )}
-          </TouchableOpacity>
+          </Pressable>
         </View>
       )}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: BEIGE_LIGHT,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: BEIGE_LIGHT,
-    gap: 12,
-    padding: 32,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: GRAY_500,
-    marginTop: 8,
-  },
-  backButton: {
-    marginTop: 16,
-    backgroundColor: CAFE,
-    borderRadius: 9999,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-  },
-  backButtonText: {
-    color: WHITE,
-    fontSize: 14,
-    fontWeight: '700',
-  },
+// ─── Small info component ───
+const InfoItem = ({ icon, text, sub }) => (
+  <View style={s.infoItem}>
+    <Icon name={icon} size={16} color={colors.accent} />
+    <Text style={s.infoText}>{text}</Text>
+    {sub ? <Text style={s.infoSub}>{sub}</Text> : null}
+  </View>
+);
+
+export default EventDetailScreen;
+
+// ─── Styles ───
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
+  scroll: { flexGrow: 1 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, gap: spacing.sm, padding: spacing.xxl },
+  emptyText: { ...typography.standfirst, color: colors.textSecondary },
+  backBtn: { marginTop: spacing.sm, borderWidth: borders.medium, borderColor: colors.border, paddingVertical: spacing.xs, paddingHorizontal: spacing.lg },
+  backBtnText: { ...typography.button, color: colors.textPrimary },
 
   // Hero
-  heroContainer: {
-    height: HERO_HEIGHT,
-    position: 'relative',
+  hero: { height: HERO_H, position: 'relative' },
+  heroImg: { width: '100%', height: HERO_H },
+  heroScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(26,22,19,0.35)',
   },
-  heroImage: {
-    width: '100%',
-    height: HERO_HEIGHT,
+  heroOverlay: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
+    paddingHorizontal: spacing.gutter, paddingBottom: spacing.md,
   },
-  heroPlaceholder: {
-    backgroundColor: CAFE,
-    justifyContent: 'center',
-    alignItems: 'center',
+  heroOverline: {
+    ...typography.label,
+    color: 'rgba(241,234,221,0.9)',
+    letterSpacing: 2.5,
   },
-  heroGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 80,
-    backgroundColor: 'transparent',
-    // Simulate gradient via opacity layer
+  heroPrice: {
+    ...typography.numeral,
+    color: '#F1EADD',
+    fontSize: 28,
   },
 
   // Content
-  content: {
-    padding: 16,
-    backgroundColor: BEIGE_LIGHT,
-  },
+  content: { paddingHorizontal: spacing.gutter, paddingTop: spacing.lg },
+
   title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: CAFE,
+    ...typography.coverTitle,
+    color: colors.textPrimary,
+    fontSize: 32,
     lineHeight: 34,
-    marginBottom: 12,
+    marginBottom: spacing.xs,
+  },
+  dateLine: {
+    ...typography.standfirst,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
   },
 
-  // Host row
-  hostRow: {
+  rule: {
+    height: borders.hairline,
+    backgroundColor: colors.borderHairline,
+    marginVertical: spacing.md,
+  },
+
+  // Status card
+  statusCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 20,
-    backgroundColor: WHITE,
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: CAFE,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderLeftWidth: 3,
+    marginBottom: spacing.md,
   },
-  hostIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: CAFE,
+  statusConfirmed: {
+    backgroundColor: 'rgba(46,125,50,0.08)',
+    borderLeftColor: colors.success,
+  },
+  statusPending: {
+    backgroundColor: 'rgba(191,71,38,0.08)',
+    borderLeftColor: colors.accent,
+  },
+  statusTitle: {
+    ...typography.body,
+    fontFamily: typography.body.fontFamily,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  statusSub: {
+    ...typography.body,
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 1,
+  },
+
+  // Chat
+  chatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
   },
-  hostInitial: {
-    color: WHITE,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  hostLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: GRAY_500,
-  },
-  hostName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: CAFE,
-  },
-
-  // Info grid
-  infoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 20,
-  },
-  infoCard: {
+  chatBtnText: {
+    ...typography.button,
+    color: colors.onAccent,
     flex: 1,
-    minWidth: (SCREEN_WIDTH - 48) / 2,
-    backgroundColor: WHITE,
-    borderRadius: 12,
-    padding: 14,
-    shadowColor: CAFE,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-    gap: 4,
+    textAlign: 'center',
   },
-  infoCardTitle: {
-    fontSize: 13,
+
+  // Quick info row
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 0,
+  },
+  infoItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: spacing.xxs,
+  },
+  infoText: {
+    ...typography.body,
     fontWeight: '600',
-    color: GRAY_700,
-    marginTop: 4,
+    color: colors.textPrimary,
+    fontSize: 13,
+    textAlign: 'center',
   },
-  infoCardSub: {
-    fontSize: 11,
-    color: GRAY_500,
+  infoSub: {
+    ...typography.price,
+    color: colors.textMuted,
+    fontSize: 10,
+    textAlign: 'center',
   },
-
-  // Sections
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: CAFE,
-    marginBottom: 10,
-  },
-  description: {
-    fontSize: 15,
-    color: GRAY_700,
-    lineHeight: 24,
+  infoSep: {
+    width: borders.hairline,
+    height: 32,
+    backgroundColor: colors.borderHairline,
+    alignSelf: 'center',
   },
 
-  // Cuisine tags
+  // Tags
   tagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.xs,
+    marginBottom: spacing.md,
   },
-  cuisineTag: {
-    backgroundColor: BEIGE,
-    borderRadius: 9999,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
+  tag: {
+    borderWidth: borders.hairline,
+    borderColor: colors.textMuted,
+    paddingVertical: spacing.xxs,
+    paddingHorizontal: spacing.sm,
   },
-  cuisineTagText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: CAFE,
+  tagText: {
+    ...typography.label,
+    color: colors.textMuted,
+    letterSpacing: 1.5,
+    fontSize: 9,
+  },
+
+  // Sections
+  section: { marginBottom: spacing.lg },
+  sectionLabel: {
+    ...typography.label,
+    color: colors.textMuted,
+    letterSpacing: 2.5,
+    marginBottom: spacing.sm,
+  },
+  bodyText: {
+    ...typography.bodyLg,
+    color: colors.textSecondary,
+    lineHeight: 24,
   },
 
   // Menu
-  menuCourse: {
+  menuItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'baseline',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: borders.hairline,
+    borderBottomColor: colors.borderHairline,
   },
-  menuCourseNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: CAFE,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-    marginTop: 2,
-    flexShrink: 0,
-  },
-  menuCourseNumberText: {
-    color: WHITE,
+  menuNum: {
+    ...typography.price,
+    color: colors.accent,
     fontSize: 12,
-    fontWeight: '700',
+    width: 22,
   },
-  menuCourseContent: {
-    flex: 1,
+  menuName: {
+    ...typography.dinnerTitle,
+    color: colors.textPrimary,
+    fontSize: 16,
   },
-  menuCourseName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: GRAY_700,
-  },
-  menuCourseDesc: {
-    fontSize: 13,
-    color: GRAY_500,
-    marginTop: 3,
-    lineHeight: 20,
+  menuDesc: {
+    ...typography.body,
+    color: colors.textMuted,
+    marginTop: 2,
   },
 
-  // Host bio
-  hostBioCard: {
+  // Host
+  hostCard: {
     flexDirection: 'row',
-    backgroundColor: WHITE,
-    borderRadius: 12,
-    padding: 14,
-    gap: 12,
-    shadowColor: CAFE,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
   },
-  hostBioIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: CAFE,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
+  hostAvatar: {
+    width: 44, height: 44, borderRadius: radius.pill,
+    backgroundColor: colors.textPrimary,
+    alignItems: 'center', justifyContent: 'center',
   },
-  hostBioInfo: {
-    flex: 1,
-  },
-  hostBioInitial: {
-    color: WHITE,
+  hostInitial: {
+    ...typography.dinnerTitle,
+    color: colors.onAccent,
     fontSize: 18,
-    fontWeight: '700',
   },
-  hostBioName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: CAFE,
-    marginBottom: 4,
+  hostLabel: {
+    ...typography.label,
+    color: colors.textMuted,
+    letterSpacing: 2,
+    marginBottom: 2,
   },
-  hostBioText: {
-    fontSize: 13,
-    color: GRAY_500,
-    lineHeight: 20,
+  hostName: {
+    ...typography.dinnerTitle,
+    color: colors.textPrimary,
+    fontSize: 17,
+  },
+  hostBio: {
+    ...typography.body,
+    color: colors.textMuted,
+    marginTop: spacing.xxs,
   },
 
   // Booking bar
   bookingBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: WHITE,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
-    borderTopWidth: 1,
-    borderTopColor: GRAY_200,
-    gap: 8,
-    shadowColor: CAFE,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 10,
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.gutter,
+    paddingTop: spacing.sm,
+    paddingBottom: Platform.OS === 'ios' ? 28 : spacing.sm,
+    borderTopWidth: borders.hairline,
+    borderTopColor: colors.borderHairline,
   },
-  bookingBarPrice: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginRight: 4,
+  bookingLeft: {
+    flexDirection: 'row', alignItems: 'baseline',
   },
-  bookingBarPriceAmount: {
+  bookingPrice: {
+    ...typography.numeral,
+    color: colors.textPrimary,
     fontSize: 22,
-    fontWeight: '700',
-    color: CAFE,
   },
-  bookingBarPriceSub: {
-    fontSize: 12,
-    color: GRAY_500,
+  bookingPriceSub: {
+    ...typography.price,
+    color: colors.textMuted,
     marginLeft: 2,
   },
-  partySizeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+
+  stepper: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    marginHorizontal: spacing.xs,
   },
-  partySizeBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: BEIGE,
-    justifyContent: 'center',
-    alignItems: 'center',
+  stepBtn: {
+    width: 30, height: 30,
+    borderWidth: borders.hairline, borderColor: colors.borderHairline,
+    alignItems: 'center', justifyContent: 'center',
   },
-  partySizeNum: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: CAFE,
+  stepNum: {
+    ...typography.numeral,
+    color: colors.textPrimary,
+    fontSize: 16,
     minWidth: 20,
     textAlign: 'center',
   },
-  reserveButton: {
-    flex: 1,
-    backgroundColor: CAFE,
-    borderRadius: 9999,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reserveButtonDisabled: {
-    backgroundColor: GRAY_200,
-  },
-  reserveButtonText: {
-    color: WHITE,
-    fontSize: 14,
-    fontWeight: '700',
-  },
 
-  // Chat button
-  chatButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: WHITE,
-    borderRadius: 12,
+  reserveBtn: {
+    flex: 1,
+    backgroundColor: colors.accent,
     paddingVertical: 14,
-    marginBottom: 12,
-    borderWidth: 1.5,
-    borderColor: CAFE,
-    gap: 8,
+    alignItems: 'center', justifyContent: 'center',
   },
-  chatButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: CAFE,
+  reserveBtnOff: {
+    backgroundColor: colors.surface,
+  },
+  reserveBtnText: {
+    ...typography.button,
+    color: colors.onAccent,
+    letterSpacing: 1.5,
   },
 });
-
-export default EventDetailScreen;

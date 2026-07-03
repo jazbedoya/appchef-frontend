@@ -54,8 +54,18 @@ const eventsService = {
     return response.data;
   },
 
+  async getPendingApprovals() {
+    const response = await reservationApi.get('/reservations/pending-approvals');
+    return response.data;
+  },
+
   async confirmReservation(reservationId) {
     const response = await reservationApi.put(`/reservations/${reservationId}/confirm`);
+    return response.data;
+  },
+
+  async rejectReservation(reservationId) {
+    const response = await reservationApi.put(`/reservations/${reservationId}/reject`);
     return response.data;
   },
 };

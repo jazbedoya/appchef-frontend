@@ -107,7 +107,7 @@ const ChatStack = () => (
     <Stack.Screen
       name="ChatMain"
       component={ChatScreen}
-      options={{ title: 'Messages' }}
+      options={{ headerShown: false }}
     />
   </Stack.Navigator>
 );
