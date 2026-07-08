@@ -13,6 +13,7 @@ export default function Field({
   secure = false, showEyeToggle = false,
   value, onChangeText, containerStyle,
   autoCapitalize = 'none', keyboardType,
+  error,
 }) {
   const [hidden, setHidden] = useState(secure);
   return (
@@ -21,7 +22,7 @@ export default function Field({
         {label}
         {hint ? <Text style={styles.hint}>{`  · ${hint}`}</Text> : null}
       </Text>
-      <View style={styles.row}>
+      <View style={[styles.row, error && styles.rowError]}>
         {atSign ? (
           <Text style={styles.at}>@</Text>
         ) : icon ? (
@@ -43,6 +44,7 @@ export default function Field({
           </Pressable>
         )}
       </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
 }
@@ -58,4 +60,6 @@ const styles = StyleSheet.create({
   },
   at: { fontFamily: typography.dinnerTitle.fontFamily, fontSize: 18, color: colors.accent },
   input: { flex: 1, ...typography.input, color: colors.textPrimary, padding: spacing.none },
+  rowError: { borderBottomColor: colors.error },
+  error: { ...typography.price, color: colors.error, fontSize: 10, marginTop: spacing.xxs },
 });
