@@ -11,7 +11,6 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { selectUser, selectIsHost, logoutUser } from '../store/authSlice';
 import {
-  fetchUserReservations, selectMyReservations,
   fetchPendingApprovals, selectPendingApprovals,
   approveReservation, rejectReservation,
   selectEvents,
@@ -25,26 +24,12 @@ import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
 import RatingStars from '../components/RatingStars';
 
-// ─── Status helpers ───
-
-const STATUS_LABELS = {
-  confirmed: 'Confirmada', pending_approval: 'Pendiente', pending_payment: 'Procesando',
-  completed: 'Completada', rejected: 'Rechazada', expired: 'Expirada',
-  cancelled_by_guest: 'Cancelada', cancelled_by_host: 'Cancelada',
-};
-const STATUS_COLORS = {
-  confirmed: colors.success, pending_approval: colors.accent, pending_payment: colors.textMuted,
-  completed: colors.textMuted, rejected: colors.error, expired: colors.textMuted,
-  cancelled_by_guest: colors.textMuted, cancelled_by_host: colors.textMuted,
-};
-
 // ─── Component ───
 
 export default function ProfileScreen({ navigation }) {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
   const isHost = useSelector(selectIsHost);
-  const reservations = useSelector(selectMyReservations);
   const pendingApprovals = useSelector(selectPendingApprovals);
   const allEvents = useSelector(selectEvents);
   const [editModal, setEditModal] = useState(false);
@@ -59,7 +44,6 @@ export default function ProfileScreen({ navigation }) {
 
   useEffect(() => {
     if (user?.id) {
-      dispatch(fetchUserReservations(user.id));
       eventsService.getUserReviews(user.id).then(d => {
         setReviews(d.reviews || []);
         setReviewMeta({ total: d.total, average_rating: d.average_rating });
@@ -167,9 +151,6 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
-  const upcoming = reservations.filter(r => ['confirmed', 'pending_approval', 'pending_payment'].includes(r.status));
-  const past = reservations.filter(r => ['completed', 'rejected', 'expired', 'cancelled_by_guest', 'cancelled_by_host'].includes(r.status));
-
   const memberSince = user?.created_at ? new Date(user.created_at).getFullYear() : null;
   const emailVerified = user?.email_verified === true;
   const phoneVerified = user?.phone_verified === true;
@@ -205,6 +186,23 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
         {user?.profile?.bio ? <Text style={s.bio}>{user.profile.bio}</Text> : null}
+
+        {/* ── Followers / Following ── */}
+        <View style={s.followRow}>
+          <Pressable onPress={() => navigation.navigate('FollowList', { userId: user.id, mode: 'followers' })}>
+            <Text style={s.followTap}>
+              <Text style={s.followNum}>{user?.followers_count || 0}</Text>
+              <Text style={s.followLabel}> seguidores</Text>
+            </Text>
+          </Pressable>
+          <Text style={s.followSep}>  ·  </Text>
+          <Pressable onPress={() => navigation.navigate('FollowList', { userId: user.id, mode: 'following' })}>
+            <Text style={s.followTap}>
+              <Text style={s.followNum}>{user?.following_count || 0}</Text>
+              <Text style={s.followLabel}> siguiendo</Text>
+            </Text>
+          </Pressable>
+        </View>
 
         {/* ── Badges de confianza ── */}
         <View style={s.badgesRow}>
@@ -246,14 +244,12 @@ export default function ProfileScreen({ navigation }) {
 
         <View style={s.rule} />
 
-        {/* ── Stats ── */}
-        <View style={s.statsRow}>
-          <StatItem num={upcoming.length} label="PRÓXIMAS" />
-          <View style={s.statSep} />
-          <StatItem num={past.length} label="PASADAS" />
-          <View style={s.statSep} />
-          <StatItem num={reservations.length} label="TOTAL" />
-        </View>
+        {/* ── Mis cenas ── */}
+        <Pressable style={s.misCenasBtn} onPress={() => navigation.navigate('MisCenas')}>
+          <Ionicons name="calendar-outline" size={20} color={colors.textPrimary} />
+          <Text style={s.misCenasText}>Mis cenas</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </Pressable>
         <View style={s.rule} />
 
         {/* ── Pending approvals (host) ── */}
@@ -292,46 +288,6 @@ export default function ProfileScreen({ navigation }) {
                   )}
                 </View>
               </View>
-            ))}
-            <View style={s.rule} />
-          </>
-        )}
-
-        {/* ── Upcoming ── */}
-        {upcoming.length > 0 && (
-          <>
-            <Text style={s.sectionLabel}>PRÓXIMAS CENAS</Text>
-            {upcoming.map((r) => (
-              <Pressable key={r.id} style={s.resRow}
-                onPress={() => navigation.navigate('Inicio', { screen: 'EventDetail', params: { eventId: r.event_id } })}>
-                <View style={[s.statusDot, { backgroundColor: STATUS_COLORS[r.status] || colors.textMuted }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.resTitle}>{r.event_title || getEventTitle(r.event_id)}</Text>
-                  <Text style={s.resMeta}>
-                    {STATUS_LABELS[r.status] || r.status}
-                    {r.confirmation_code ? ` · ${r.confirmation_code}` : ''}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-              </Pressable>
-            ))}
-            <View style={s.rule} />
-          </>
-        )}
-
-        {/* ── Past ── */}
-        {past.length > 0 && (
-          <>
-            <Text style={s.sectionLabel}>HISTORIAL</Text>
-            {past.map((r) => (
-              <Pressable key={r.id} style={s.resRow}
-                onPress={() => navigation.navigate('Inicio', { screen: 'EventDetail', params: { eventId: r.event_id } })}>
-                <View style={[s.statusDot, { backgroundColor: STATUS_COLORS[r.status] || colors.textMuted }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.resTitle, { color: colors.textMuted }]}>{r.event_title || getEventTitle(r.event_id)}</Text>
-                  <Text style={s.resMeta}>{STATUS_LABELS[r.status] || r.status}</Text>
-                </View>
-              </Pressable>
             ))}
             <View style={s.rule} />
           </>
@@ -431,13 +387,6 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
-const StatItem = ({ num, label }) => (
-  <View style={s.stat}>
-    <Text style={s.statNum}>{num}</Text>
-    <Text style={s.statLabel}>{label}</Text>
-  </View>
-);
-
 // ─── Styles ───
 
 const s = StyleSheet.create({
@@ -465,6 +414,11 @@ const s = StyleSheet.create({
   hostBadge: { ...typography.label, color: colors.accent, letterSpacing: 2, marginTop: spacing.xxs, fontSize: 9 },
   editLink: { ...typography.button, color: colors.accent, borderBottomWidth: borders.medium, borderBottomColor: colors.accent, paddingBottom: 1 },
   bio: { ...typography.standfirst, color: colors.textSecondary, paddingHorizontal: spacing.gutter, marginTop: spacing.sm },
+  followRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.gutter, marginTop: spacing.sm },
+  followTap: {},
+  followNum: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 15 },
+  followLabel: { ...typography.body, color: colors.textMuted, fontSize: 13 },
+  followSep: { ...typography.body, color: colors.textMuted, fontSize: 13 },
 
   // Badges
   badgesRow: {
@@ -486,12 +440,12 @@ const s = StyleSheet.create({
   },
   ratingText: { ...typography.price, color: colors.textMuted, fontSize: 12 },
 
-  // Stats
-  statsRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.gutter },
-  stat: { flex: 1, alignItems: 'center' },
-  statNum: { ...typography.numeral, color: colors.textPrimary, fontSize: 26 },
-  statLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 2, fontSize: 8, marginTop: 2 },
-  statSep: { width: borders.hairline, height: 28, backgroundColor: colors.borderHairline },
+  // Mis cenas button
+  misCenasBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.gutter, paddingVertical: spacing.md,
+  },
+  misCenasText: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 17, flex: 1 },
 
   // Sections
   sectionLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 2.5, paddingHorizontal: spacing.gutter, marginBottom: spacing.xxs },
@@ -517,16 +471,6 @@ const s = StyleSheet.create({
   btnOutlineText: { ...typography.button, color: colors.textPrimary },
   btnFill: { backgroundColor: colors.accent, paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
   btnFillText: { ...typography.button, color: colors.onAccent },
-
-  // Reservations
-  resRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.gutter, paddingVertical: spacing.sm,
-    borderBottomWidth: borders.hairline, borderBottomColor: colors.borderHairline,
-  },
-  statusDot: { width: 8, height: 8, borderRadius: radius.pill },
-  resTitle: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 16 },
-  resMeta: { ...typography.price, color: colors.textMuted, marginTop: 2 },
 
   // Reviews
   reviewCard: {

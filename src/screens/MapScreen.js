@@ -108,8 +108,16 @@ const MapScreen = ({ navigation }) => {
       .catch(() => setError('No se pudieron cargar las cenas'));
   };
 
+  const formatDistance = (km) => {
+    if (km == null) return '';
+    if (km < 1) return `a ${km.toFixed(1)} km`;
+    return `a ${Math.round(km)} km`;
+  };
+
   const renderItem = ({ item }) => {
     const isSelected = item.id === selectedId;
+    const hostInitial = (item.host_name || 'C')[0].toUpperCase();
+    const dist = formatDistance(item.distance_km);
     return (
       <Pressable
         style={[st.listRow, isSelected && st.listRowSelected]}
@@ -120,12 +128,14 @@ const MapScreen = ({ navigation }) => {
         </View>
         <View style={st.listBody}>
           <Text style={st.listTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={st.listMeta}>{getCuisine(item)} · {item.city} · {getSpots(item)} plazas</Text>
+          <Text style={st.listMeta}>
+            {getCuisine(item)} · {item.city} · {getSpots(item)} plazas{dist ? ` · ${dist}` : ''}
+          </Text>
         </View>
         <View style={st.listActions}>
           <Pressable style={st.listChefBtn} onPress={() => navigation.navigate('ChefProfile', { userId: item.host_id, userName: item.host_name })}>
             <View style={st.listChefAvatar}>
-              <Text style={st.listChefInitial}>{(item.host_name || '?')[0].toUpperCase()}</Text>
+              <Text style={st.listChefInitial}>{hostInitial}</Text>
             </View>
           </Pressable>
           <Pressable onPress={() => navigation.navigate('EventDetailFromMap', { eventId: item.id })}>

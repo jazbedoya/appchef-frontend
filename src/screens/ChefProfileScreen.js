@@ -159,9 +159,9 @@ export default function ChefProfileScreen({ route, navigation }) {
 
         {/* ── Stats ── */}
         <View style={s.statsRow}>
-          <StatItem num={profile?.followers_count ?? 0} label="SEGUIDORES" />
+          <StatItem num={profile?.followers_count ?? 0} label="SEGUIDORES" onPress={() => navigation.navigate('FollowList', { userId, mode: 'followers' })} />
           <View style={s.statSep} />
-          <StatItem num={profile?.following_count ?? 0} label="SIGUIENDO" />
+          <StatItem num={profile?.following_count ?? 0} label="SIGUIENDO" onPress={() => navigation.navigate('FollowList', { userId, mode: 'following' })} />
           {(p?.total_dinners_hosted > 0 || p?.total_dinners_attended > 0) && (
             <>
               <View style={s.statSep} />
@@ -220,12 +220,15 @@ export default function ChefProfileScreen({ route, navigation }) {
   );
 }
 
-const StatItem = ({ num, label }) => (
-  <View style={s.stat}>
-    <Text style={s.statNum}>{num}</Text>
-    <Text style={s.statLabel}>{label}</Text>
-  </View>
-);
+const StatItem = ({ num, label, onPress }) => {
+  const Wrap = onPress ? Pressable : View;
+  return (
+    <Wrap style={s.stat} onPress={onPress}>
+      <Text style={s.statNum}>{num}</Text>
+      <Text style={s.statLabel}>{label}</Text>
+    </Wrap>
+  );
+};
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },

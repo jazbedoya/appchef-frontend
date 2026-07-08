@@ -1,13 +1,12 @@
-// HomeScreen.js — Rediseño editorial "portada de revista gastronómica"
+// HomeScreen.js — Rediseño editorial premium con carrusel destacado
 // Conectado a Redux (datos reales del backend).
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import {
-  View, Text, ScrollView, Pressable, Image, StyleSheet,
+  View, Text, ScrollView, Pressable, StyleSheet,
   RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
-import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 
 import {
@@ -22,6 +21,8 @@ import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
+import FeaturedCarousel from '../components/FeaturedCarousel';
+import NotificationBell from '../components/NotificationBell';
 
 // ─── Helpers ───
 
@@ -44,6 +45,8 @@ const getSeasonLabel = () => {
   return 'Otoño';
 };
 
+const FEATURED_COUNT = 10;
+
 // ─── Component ───
 
 const HomeScreen = ({ navigation }) => {
@@ -55,19 +58,32 @@ const HomeScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
 
   const loadEvents = useCallback(() => {
-    dispatch(fetchEvents({ page: 1, perPage: 30 }));
+    dispatch(fetchEvents({ page: 1, perPage: 50 }));
   }, [dispatch]);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await dispatch(fetchEvents({ page: 1, perPage: 30 }));
+    await dispatch(fetchEvents({ page: 1, perPage: 50 }));
     setRefreshing(false);
   }, [dispatch]);
 
-  const featured = events[0] || null;
-  const cartelera = events.slice(1);
+  const featured = events.slice(0, FEATURED_COUNT);
+  const cartelera = events;
+
+  // Group events by city for "Por ciudad" section
+  const citySections = useMemo(() => {
+    const map = {};
+    events.forEach((ev) => {
+      const city = ev.city || 'Sin ubicación';
+      if (!map[city]) map[city] = [];
+      map[city].push(ev);
+    });
+    return Object.entries(map)
+      .sort((a, b) => b[1].length - a[1].length)
+      .slice(0, 6);
+  }, [events]);
 
   if (isLoading && events.length === 0) {
     return (
@@ -87,62 +103,37 @@ const HomeScreen = ({ navigation }) => {
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
-        {/* ── Masthead ── */}
-        <View style={styles.masthead}>
-          <View style={styles.mastheadMeta}>
-            <Text style={styles.metaLabel}>
-              N.º {format(new Date(), 'MM')} · {getSeasonLabel()}
-            </Text>
-            <Text style={styles.metaLabel}>
-              {user?.username ? user.username.toUpperCase() : ''}
+        {/* ── Top section ── */}
+        <View>
+          {/* Masthead */}
+          <View style={styles.masthead}>
+            <View style={styles.mastheadMeta}>
+              <Text style={styles.metaLabel}>
+                N.º {format(new Date(), 'MM')} · {getSeasonLabel()}
+              </Text>
+              <View style={styles.mastheadRight}>
+                <Text style={styles.metaLabel}>
+                  {user?.username ? user.username.toUpperCase() : ''}
+                </Text>
+                <NotificationBell onPress={() => navigation.navigate('Notifications')} />
+              </View>
+            </View>
+            <View style={styles.rule} />
+            <Text style={styles.wordmark}>APP CHEF</Text>
+            <View style={styles.rule} />
+            <Text style={[styles.metaLabel, styles.centered]}>
+              Cenas privadas por invitación
             </Text>
           </View>
-          <View style={styles.rule} />
-          <Text style={styles.wordmark}>APP CHEF</Text>
-          <View style={styles.rule} />
-          <Text style={[styles.metaLabel, styles.centered]}>
-            La comida es la excusa, lo interesante viene después
-          </Text>
+
+          {/* Carrusel destacadas */}
+          <FeaturedCarousel
+            data={featured}
+            onPressItem={(item) => navigation.navigate('EventDetail', { eventId: item.id })}
+          />
         </View>
 
-        {/* ── Portada: evento destacado ── */}
-        {featured && (
-          <>
-            <Pressable
-              style={styles.cover}
-              onPress={() => navigation.navigate('EventDetail', { eventId: featured.id })}
-            >
-              <Text style={styles.overline}>
-                {getCuisineLabel(featured)} · {featured.city}
-              </Text>
-              <Text style={styles.coverTitle}>{featured.title}</Text>
-              <Text style={styles.standfirst} numberOfLines={3}>
-                {featured.description}
-              </Text>
-            </Pressable>
-
-            {featured.cover_image_url ? (
-              <Image
-                source={{ uri: featured.cover_image_url }}
-                style={styles.coverImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.coverImage, { backgroundColor: colors.imagePlaceholder }]} />
-            )}
-
-            <View style={styles.coverFooter}>
-              <Text style={styles.priceLabel}>
-                €{Number(featured.price_per_person).toFixed(0)} · {getSpots(featured)} PLAZAS
-              </Text>
-              <Pressable onPress={() => navigation.navigate('EventDetail', { eventId: featured.id })}>
-                <Text style={styles.linkAccent}>SOLICITAR SITIO →</Text>
-              </Pressable>
-            </View>
-          </>
-        )}
-
-        {/* ── Crear cena ── */}
+        {/* ── Crear cena (empujado abajo) ── */}
         <View style={styles.createBlock}>
           <View style={styles.createCopy}>
             <Text style={styles.createTitle}>¿Anfitrión?</Text>
@@ -156,35 +147,6 @@ const HomeScreen = ({ navigation }) => {
           </Pressable>
         </View>
 
-        {/* ── En cartelera ── */}
-        {cartelera.length > 0 && (
-          <>
-            <View style={styles.ruleFull} />
-            <Text style={styles.sectionLabel}>En cartelera</Text>
-            <View style={styles.list}>
-              {cartelera.map((event, i) => (
-                <Pressable
-                  key={event.id}
-                  style={styles.row}
-                  onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
-                >
-                  <Text style={styles.rowNum}>
-                    {String(i + 2).padStart(2, '0')}
-                  </Text>
-                  <View style={styles.rowBody}>
-                    <Text style={styles.rowTitle}>{event.title}</Text>
-                    <Text style={styles.rowMeta}>
-                      {getCuisineLabel(event)} · {event.city} · {getSpots(event)} plazas
-                    </Text>
-                  </View>
-                  <Text style={styles.rowPrice}>
-                    €{Number(event.price_per_person).toFixed(0)}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </>
-        )}
 
         {/* ── Error ── */}
         {error && events.length === 0 && (
@@ -222,38 +184,21 @@ export default HomeScreen;
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingBottom: spacing.xxxl + spacing.xxl },
+  scroll: { flexGrow: 1, justifyContent: 'space-between' },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   // Masthead
-  masthead: { paddingHorizontal: spacing.gutter, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  mastheadMeta: { flexDirection: 'row', justifyContent: 'space-between' },
+  masthead: { paddingHorizontal: spacing.gutter, paddingTop: spacing.lg, paddingBottom: spacing.sm },
+  mastheadMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  mastheadRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   metaLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 1.4 },
-  centered: { textAlign: 'center' },
-  rule: { height: borders.hairline, backgroundColor: colors.border, marginVertical: spacing.xs },
-  wordmark: { ...typography.masthead, color: colors.textPrimary, textAlign: 'center' },
+  centered: { textAlign: 'center', marginTop: spacing.xxs },
+  rule: { height: borders.hairline, backgroundColor: colors.border, marginVertical: spacing.sm },
+  wordmark: { ...typography.masthead, color: colors.textPrimary, textAlign: 'center', paddingVertical: spacing.xs },
 
-  // Cover
-  cover: { paddingHorizontal: spacing.gutter, paddingTop: spacing.lg },
-  overline: { ...typography.label, color: colors.accent, letterSpacing: 1.8, marginBottom: spacing.sm },
+  // Cover (kept for empty/error states)
   coverTitle: { ...typography.coverTitle, color: colors.textPrimary, marginBottom: spacing.sm },
   standfirst: { ...typography.standfirst, color: colors.textSecondary },
-  coverImage: {
-    marginHorizontal: spacing.gutter,
-    marginTop: spacing.md,
-    height: 220,
-    borderRadius: radius.xs,
-    backgroundColor: colors.imagePlaceholder,
-  },
-  coverFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    paddingHorizontal: spacing.gutter,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-  },
-  priceLabel: { ...typography.price, color: colors.textMuted, letterSpacing: 1 },
   linkAccent: {
     ...typography.price,
     color: colors.textPrimary,
@@ -265,24 +210,41 @@ const styles = StyleSheet.create({
   // Create block
   createBlock: {
     marginHorizontal: spacing.gutter,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xl,
     borderWidth: borders.medium,
     borderColor: colors.border,
-    padding: spacing.md,
+    padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
   createCopy: { flex: 1 },
-  createTitle: { ...typography.dinnerTitle, fontSize: 20, color: colors.textPrimary, marginBottom: spacing.xxs },
-  createSub: { ...typography.body, color: colors.textMuted },
+  createTitle: { ...typography.dinnerTitle, fontSize: 22, color: colors.textPrimary, marginBottom: spacing.xxs },
+  createSub: { ...typography.body, color: colors.textMuted, fontSize: 14, lineHeight: 20 },
   createBtn: {
     backgroundColor: colors.accent,
     borderRadius: radius.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
   },
-  createBtnText: { ...typography.button, color: colors.onAccent },
+  createBtnText: { ...typography.button, color: colors.onAccent, fontSize: 11 },
+
+  // Por ciudad
+  cityTrack: {
+    paddingHorizontal: spacing.gutter,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  cityCard: {
+    borderWidth: borders.hairline,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    minWidth: 100,
+  },
+  cityName: { ...typography.dinnerTitle, fontSize: 16, color: colors.textPrimary, marginBottom: spacing.xxs },
+  cityCount: { ...typography.label, color: colors.textMuted, letterSpacing: 1.2, fontSize: 9 },
 
   // Cartelera
   ruleFull: { height: borders.hairline, backgroundColor: colors.border, marginHorizontal: spacing.gutter },

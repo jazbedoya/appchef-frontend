@@ -1,9 +1,9 @@
 // EventDetailScreen.js — Rediseño editorial: detalle de cena
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, ScrollView, Image, StyleSheet,
+  View, Text, ScrollView, Image, StyleSheet, TextInput,
   TouchableOpacity, ActivityIndicator, Alert,
-  Platform, Dimensions, Pressable,
+  Platform, Dimensions, Pressable, KeyboardAvoidingView,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons as Icon } from '@expo/vector-icons';
@@ -18,6 +18,8 @@ import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
+import RatingStars from '../components/RatingStars';
+import eventsService from '../services/eventsService';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const HERO_H = Math.round(SH * 0.40);
@@ -50,8 +52,16 @@ const EventDetailScreen = ({ route, navigation }) => {
   const user = useSelector(selectUser);
   const myReservations = useSelector(selectMyReservations);
 
+  const scrollRef = useRef(null);
   const [partySize, setPartySize] = useState(1);
   const [chatRoomId, setChatRoomId] = useState(null);
+
+  // Review state
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewSent, setReviewSent] = useState(null); // sent review object
+  const [existingReview, setExistingReview] = useState(null);
 
   useEffect(() => { dispatch(fetchEventById(eventId)); }, [dispatch, eventId]);
 
@@ -77,6 +87,39 @@ const EventDetailScreen = ({ route, navigation }) => {
         });
     });
   }, [eventId, user?.id, myReservations, event?.host_id]);
+
+  // Check if user already reviewed the host for this event
+  useEffect(() => {
+    if (!user?.id || !event?.host_id || user.id === event.host_id) return;
+    const confirmed = myReservations.find(r => r.event_id === eventId && r.status === 'confirmed');
+    if (!confirmed) return;
+    eventsService.getUserReviews(event.host_id).then(data => {
+      const mine = (data.reviews || []).find(
+        r => r.reviewer_id === user.id && r.event_id === eventId
+      );
+      if (mine) setExistingReview(mine);
+    }).catch(() => {});
+  }, [user?.id, event?.host_id, eventId, myReservations]);
+
+  const handleSubmitReview = async () => {
+    if (reviewRating === 0) { Alert.alert('Puntuación', 'Selecciona al menos una estrella.'); return; }
+    setReviewSubmitting(true);
+    try {
+      const result = await eventsService.createReview({
+        revieweeId: event.host_id,
+        eventId: event.id,
+        rating: reviewRating,
+        comment: reviewComment.trim() || undefined,
+      });
+      setReviewSent(result);
+      Alert.alert('Gracias', 'Tu reseña se ha publicado.');
+    } catch (err) {
+      const msg = err?.response?.data?.detail || 'No se pudo enviar la reseña.';
+      Alert.alert('Error', msg);
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
 
   // ─── Loading ───
   if (isLoadingDetail || (!event && !isLoadingDetail)) {
@@ -151,8 +194,8 @@ const EventDetailScreen = ({ route, navigation }) => {
 
   // ─── Render ───
   return (
-    <View style={s.root}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+    <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
 
         {/* ── Hero ── */}
         <View style={s.hero}>
@@ -290,6 +333,60 @@ const EventDetailScreen = ({ route, navigation }) => {
             <Icon name="chevron-forward" size={16} color={colors.textMuted} style={{ alignSelf: 'center' }} />
           </Pressable>
 
+          {/* ── Review section ── */}
+          {myRes?.status === 'confirmed' && !isOwn && (
+            <>
+              <View style={s.rule} />
+              {existingReview || reviewSent ? (
+                <View style={s.section}>
+                  <Text style={s.sectionLabel}>TU RESE\u00D1A</Text>
+                  <RatingStars rating={(reviewSent || existingReview).rating} size={18} />
+                  {(reviewSent || existingReview).comment ? (
+                    <Text style={[s.bodyText, { marginTop: spacing.xs }]}>
+                      {(reviewSent || existingReview).comment}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : (
+                <View style={s.section}>
+                  <Text style={s.sectionLabel}>DEJA TU RESE\u00D1A</Text>
+                  <Text style={[s.bodyText, { marginBottom: spacing.sm }]}>
+                    {'\u00BF'}C{'\u00F3'}mo fue tu experiencia con {hostName}?
+                  </Text>
+                  <RatingStars
+                    rating={reviewRating}
+                    size={32}
+                    interactive
+                    onRatingChange={setReviewRating}
+                    style={{ marginBottom: spacing.sm }}
+                  />
+                  <TextInput
+                    style={s.reviewInput}
+                    placeholder="Escribe un comentario (opcional)"
+                    placeholderTextColor={colors.textMuted}
+                    value={reviewComment}
+                    onChangeText={setReviewComment}
+                    multiline
+                    maxLength={1000}
+                    textAlignVertical="top"
+                    onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 300)}
+                  />
+                  <Pressable
+                    style={[s.reviewBtn, (reviewRating === 0 || reviewSubmitting) && s.reviewBtnOff]}
+                    onPress={handleSubmitReview}
+                    disabled={reviewRating === 0 || reviewSubmitting}
+                  >
+                    {reviewSubmitting ? (
+                      <ActivityIndicator size="small" color={colors.onAccent} />
+                    ) : (
+                      <Text style={s.reviewBtnText}>PUBLICAR RESE\u00D1A</Text>
+                    )}
+                  </Pressable>
+                </View>
+              )}
+            </>
+          )}
+
           {/* Bottom padding */}
           <View style={{ height: myRes || isOwn ? spacing.xxl : 110 }} />
         </View>
@@ -330,7 +427,7 @@ const EventDetailScreen = ({ route, navigation }) => {
           </Pressable>
         </View>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -571,6 +668,31 @@ const s = StyleSheet.create({
     ...typography.body,
     color: colors.textMuted,
     marginTop: spacing.xxs,
+  },
+
+  // Review form
+  reviewInput: {
+    ...typography.body,
+    color: colors.textPrimary,
+    borderWidth: borders.hairline,
+    borderColor: colors.borderHairline,
+    padding: spacing.sm,
+    minHeight: 80,
+    marginBottom: spacing.sm,
+  },
+  reviewBtn: {
+    backgroundColor: colors.accent,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewBtnOff: {
+    backgroundColor: colors.surface,
+  },
+  reviewBtnText: {
+    ...typography.button,
+    color: colors.onAccent,
+    letterSpacing: 1.5,
   },
 
   // Booking bar

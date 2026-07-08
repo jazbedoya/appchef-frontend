@@ -19,6 +19,9 @@ import ChatScreen from '../screens/ChatScreen';
 import AuthScreen from '../screens/AuthScreen';
 import CreateEventScreen from '../screens/CreateEventScreen';
 import ChefProfileScreen from '../screens/ChefProfileScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+import MisCenasScreen from '../screens/MisCenasScreen';
+import FollowListScreen from '../screens/FollowListScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -49,6 +52,16 @@ function HomeStackScreen() {
         component={ChefProfileScreen}
         options={{ headerShown: false }}
       />
+      <HomeStackNav.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: false }}
+      />
+      <HomeStackNav.Screen
+        name="FollowList"
+        component={FollowListScreen}
+        options={{ headerShown: false }}
+      />
     </HomeStackNav.Navigator>
   );
 }
@@ -77,6 +90,11 @@ const MapStack = () => (
       component={ChefProfileScreen}
       options={{ headerShown: false }}
     />
+    <Stack.Screen
+      name="FollowList"
+      component={FollowListScreen}
+      options={{ headerShown: false }}
+    />
   </Stack.Navigator>
 );
 
@@ -91,6 +109,21 @@ const ProfileStack = () => (
     <Stack.Screen
       name="ProfileMain"
       component={ProfileScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="MisCenas"
+      component={MisCenasScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="FollowList"
+      component={FollowListScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="ChefProfile"
+      component={ChefProfileScreen}
       options={{ headerShown: false }}
     />
   </Stack.Navigator>
@@ -112,6 +145,11 @@ const ChatStack = () => (
     <Stack.Screen
       name="ChefProfile"
       component={ChefProfileScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="FollowList"
+      component={FollowListScreen}
       options={{ headerShown: false }}
     />
   </Stack.Navigator>

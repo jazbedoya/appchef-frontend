@@ -33,6 +33,11 @@ export const colors = {
   // Placeholder de imagen (donde irá un <Image> real)
   imagePlaceholder: '#221D16',
   onImageMuted: 'rgba(241,234,221,0.32)',
+  // Texto sobre imagen/tarjeta oscura (carrusel de Inicio)
+  cardScrim: 'rgba(10,14,9,0.82)',
+  onDark: '#F7F3E8',
+  onDarkMuted: 'rgba(241,234,221,0.78)',
+  onDarkHairline: 'rgba(241,234,221,0.2)',
 
   // Mapa (alphas ya horneados para no necesitar tokens de opacidad)
   mapWater: '#DDD4C0',

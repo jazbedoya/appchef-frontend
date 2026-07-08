@@ -14,6 +14,12 @@ export const sizes = {
   handleH: 4,
   homeIndicatorW: 134,
   homeIndicatorH: 5,
+  // Carousel
+  featuredCardH: 420,
+  dotW: 7,
+  dotActiveW: 22,
+  dotH: 3,
+  carouselPeek: 34,
   // Create flow
   stepperBtn: 40,
   textareaMinSm: 80,
