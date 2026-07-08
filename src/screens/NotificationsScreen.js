@@ -83,8 +83,11 @@ const NotificationsScreen = ({ navigation }) => {
     const p = notif.payload || {};
     switch (notif.type) {
       case 'RESERVATION_REQUEST':
-      case 'RESERVATION_ACCEPTED':
         if (p.event_id) navigation.navigate('EventDetail', { eventId: p.event_id });
+        break;
+      case 'RESERVATION_ACCEPTED':
+        // Navigate to Chat tab so the new room appears
+        navigation.navigate('Chat');
         break;
       case 'NEW_REVIEW':
         navigation.navigate('Profile');

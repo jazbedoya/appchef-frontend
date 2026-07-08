@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/core';
 import {
-  View, Text, FlatList, TextInput, Pressable, StyleSheet,
+  View, Text, FlatList, TextInput, Pressable, StyleSheet, ScrollView, RefreshControl,
   KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Alert, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +17,7 @@ import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { sizes } from '../theme/sizes';
 import { typography } from '../theme/typography';
-import { chatApi, userApi, CHAT_SERVICE_URL } from '../services/api';
+import { chatApi, userApi, reservationApi, CHAT_SERVICE_URL } from '../services/api';
 
 const WS_BASE = CHAT_SERVICE_URL.replace('http', 'ws');
 
@@ -58,20 +58,38 @@ export default function ChatScreen({ route, navigation }) {
   const openRoomId = route?.params?.openRoomId;
   const roomName = route?.params?.roomName;
 
-  // ─── Load rooms ───
+  // ─── Load rooms (derived from confirmed reservations + hosting) ───
   const loadRooms = useCallback(async () => {
     try {
-      const res = await chatApi.get('/rooms/my-rooms');
+      // Get confirmed reservations
+      const resData = await reservationApi.get(`/reservations/user/${user?.id}`, { params: { status: 'confirmed' } });
+      const confirmedEvents = (resData.data.reservations || resData.data.items || []).map(r => r.event_id);
+
+      // Get events where user is host
+      const hostData = await reservationApi.get('/events/host/my-events', { params: { page: 1, per_page: 50 } });
+      const hostEvents = (hostData.data.events || hostData.data.items || []).map(e => e.id);
+
+      const allEventIds = [...new Set([...confirmedEvents, ...hostEvents])];
+      if (allEventIds.length === 0) { setRooms([]); setLoading(false); return; }
+
+      // Get rooms for those events (deduplicate by room id)
+      const roomsRes = await chatApi.post('/rooms/by-events', { event_ids: allEventIds });
       const seen = new Set();
-      const unique = (res.data.rooms || []).filter(r => {
+      const unique = (roomsRes.data.rooms || []).filter(r => {
         if (seen.has(r.id)) return false;
         seen.add(r.id);
         return true;
       });
       setRooms(unique);
-    } catch {}
+    } catch {
+      // Fallback to old method
+      try {
+        const res = await chatApi.get('/rooms/my-rooms');
+        setRooms(res.data.rooms || []);
+      } catch {}
+    }
     setLoading(false);
-  }, []);
+  }, [user?.id]);
 
   useFocusEffect(useCallback(() => { loadRooms(); }, [loadRooms]));
 
@@ -332,14 +350,20 @@ export default function ChatScreen({ route, navigation }) {
       {loading ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.xxl }} />
       ) : rooms.length === 0 ? (
-        <View style={st.empty}>
-          <Text style={st.emptyText}>Reserva una cena para unirte al chat del evento.</Text>
-        </View>
+        <ScrollView
+          contentContainerStyle={st.empty}
+          refreshControl={<RefreshControl refreshing={false} onRefresh={loadRooms} tintColor={colors.accent} />}
+        >
+          <Ionicons name="chatbubbles-outline" size={36} color={colors.textMuted} />
+          <Text style={st.emptyTitle}>Sin chats todav\u00EDa</Text>
+          <Text style={st.emptyText}>Tus cenas confirmadas aparecer\u00E1n aqu\u00ED.</Text>
+        </ScrollView>
       ) : (
         <FlatList
           data={rooms}
           keyExtractor={(r) => r.id}
           contentContainerStyle={st.listContent}
+          refreshControl={<RefreshControl refreshing={false} onRefresh={loadRooms} tintColor={colors.accent} />}
           renderItem={({ item }) => (
             <Pressable style={st.row} onPress={() => setOpenRoom(item)}>
               <View style={st.thumb}>
@@ -374,8 +398,9 @@ const st = StyleSheet.create({
   ruleFull: { height: borders.hairline, backgroundColor: colors.borderHairline, marginHorizontal: spacing.gutter },
   ruleNoMargin: { height: borders.hairline, backgroundColor: colors.borderHairline },
   listContent: { paddingHorizontal: spacing.gutter },
-  empty: { paddingHorizontal: spacing.gutter, paddingTop: spacing.xxl, alignItems: 'center' },
-  emptyText: { ...typography.body, color: colors.textMuted, textAlign: 'center' },
+  empty: { paddingHorizontal: spacing.gutter, paddingTop: spacing.xxl, alignItems: 'center', gap: spacing.sm },
+  emptyTitle: { ...typography.dinnerTitle, fontSize: 20, color: colors.textPrimary },
+  emptyText: { ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
 
   row: {
     flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start',
