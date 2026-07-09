@@ -1,10 +1,11 @@
 // EventDetailScreen.js — Rediseño editorial: detalle de cena
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, ScrollView, Image, StyleSheet, TextInput,
+  View, Text, ScrollView, Image, StyleSheet, TextInput, Modal,
   TouchableOpacity, ActivityIndicator, Alert,
   Platform, Dimensions, Pressable, KeyboardAvoidingView,
 } from 'react-native';
+import StripePaymentSheet from '../components/StripePaymentSheet';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons as Icon } from '@expo/vector-icons';
 
@@ -62,6 +63,7 @@ const EventDetailScreen = ({ route, navigation }) => {
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewSent, setReviewSent] = useState(null); // sent review object
   const [existingReview, setExistingReview] = useState(null);
+  const [paymentModal, setPaymentModal] = useState(null);
 
   useEffect(() => { dispatch(fetchEventById(eventId)); }, [dispatch, eventId]);
 
@@ -169,22 +171,31 @@ const EventDetailScreen = ({ route, navigation }) => {
     if (!user) { Alert.alert('Inicia sesión', 'Necesitas una cuenta para reservar.'); return; }
     Alert.alert(
       'Solicitar plaza',
-      `${partySize} plaza${partySize > 1 ? 's' : ''} en "${title}"\nTotal: \u20AC${total}\n\nEl anfitrión confirmará tu solicitud.`,
+      `${partySize} plaza${partySize > 1 ? 's' : ''} en "${title}"\nTotal: €${total}\n\nEl anfitrión confirmará tu solicitud.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Enviar solicitud',
+          text: 'Solicitar',
           onPress: async () => {
-            const result = await dispatch(createReservation({ eventId: event.id, partySize }));
-            if (createReservation.fulfilled.match(result)) {
-              const st = result.payload?.status;
-              if (st === 'confirmed') {
-                Alert.alert('Reserva confirmada', `Código: ${result.payload?.confirmation_code || ''}`, [{ text: 'Perfecto', onPress: () => navigation.goBack() }]);
-              } else {
-                Alert.alert('Solicitud enviada', 'El anfitrión revisará tu solicitud y te confirmaremos cuando acepte.', [{ text: 'Entendido', onPress: () => navigation.goBack() }]);
-              }
+            const guestName = user?.profile?.first_name
+              ? `${user.profile.first_name} ${user.profile.last_name || ''}`.trim()
+              : user?.username || '';
+            const result = await dispatch(createReservation({ eventId: event.id, partySize, guestName }));
+            if (!createReservation.fulfilled.match(result)) {
+              Alert.alert('Error', result.payload || 'No se pudo crear la solicitud.');
+              return;
+            }
+            const cs = result.payload?.client_secret;
+            if (cs) {
+              // Production: show payment sheet
+              setPaymentModal({ clientSecret: cs, amount: Math.round(parseFloat(total) * 100) });
             } else {
-              Alert.alert('Error', result.payload || 'No se pudo completar la reserva.');
+              // Dev mode: no payment needed
+              Alert.alert(
+                'Solicitud enviada',
+                `${hostName} revisará tu solicitud. Cuando acepte tu plaza, podrás unirte al chat de la cena.`,
+                [{ text: 'Entendido', onPress: () => navigation.goBack() }],
+              );
             }
           },
         },
@@ -194,6 +205,7 @@ const EventDetailScreen = ({ route, navigation }) => {
 
   // ─── Render ───
   return (
+    <>
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
 
@@ -428,6 +440,36 @@ const EventDetailScreen = ({ route, navigation }) => {
         </View>
       )}
     </KeyboardAvoidingView>
+
+      <Modal visible={!!paymentModal} animationType="slide" onRequestClose={() => setPaymentModal(null)}>
+        {paymentModal && (
+          <StripePaymentSheet
+            clientSecret={paymentModal.clientSecret}
+            amount={paymentModal.amount}
+            currency="eur"
+            onSuccess={() => {
+              setPaymentModal(null);
+              Alert.alert(
+                'Solicitud enviada',
+                `Tu pago de €${total} está RETENIDO, todavía no se ha cobrado.\n\n${hostName} revisará tu solicitud. Cuando acepte tu plaza, se completará el cobro y podrás unirte al chat de la cena.\n\nSi no la acepta, no se te cobrará nada.`,
+                [
+                  { text: 'Mis cenas', onPress: () => { navigation.goBack(); navigation.navigate('Profile', { screen: 'MisCenas' }); } },
+                  { text: 'Cerrar', onPress: () => navigation.goBack() },
+                ],
+              );
+            }}
+            onCancel={() => {
+              setPaymentModal(null);
+              Alert.alert('Cancelado', 'No se realizó el pago.');
+            }}
+            onError={(msg) => {
+              setPaymentModal(null);
+              Alert.alert('Error de pago', msg || 'No se pudo procesar el pago.');
+            }}
+          />
+        )}
+      </Modal>
+    </>
   );
 };
 

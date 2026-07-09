@@ -45,7 +45,7 @@ const getSeasonLabel = () => {
   return 'Otoño';
 };
 
-const FEATURED_COUNT = 10;
+const FEATURED_COUNT = 50;
 
 // ─── Component ───
 

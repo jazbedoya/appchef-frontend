@@ -32,12 +32,13 @@ const eventsService = {
     return response.data;
   },
 
-  async createReservation({ eventId, partySize, dietaryNotes, specialRequests }) {
+  async createReservation({ eventId, partySize, dietaryNotes, specialRequests, guestName }) {
     const response = await reservationApi.post('/reservations', {
       event_id: eventId,
       party_size: partySize,
       dietary_notes: dietaryNotes,
       special_requests: specialRequests,
+      guest_name: guestName,
     });
     return response.data;
   },

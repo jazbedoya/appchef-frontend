@@ -17,9 +17,14 @@ import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
 
 const STATUS_LABELS = {
-  confirmed: 'Confirmada', pending_approval: 'Pendiente', pending_payment: 'Procesando',
+  confirmed: 'Confirmada', pending_approval: 'Pendiente de aprobaci\u00F3n', pending_payment: 'Procesando pago',
   completed: 'Completada', rejected: 'Rechazada', expired: 'Expirada',
   cancelled_by_guest: 'Cancelada', cancelled_by_host: 'Cancelada',
+};
+const STATUS_HINTS = {
+  pending_approval: 'Pago retenido, no cobrado',
+  confirmed: 'Cobro completado',
+  pending_payment: 'Esperando pago',
 };
 const STATUS_COLORS = {
   confirmed: colors.success, pending_approval: colors.accent, pending_payment: colors.textMuted,
@@ -69,6 +74,7 @@ export default function MisCenasScreen({ navigation }) {
         </Text>
         <Text style={s.rowMeta}>
           {STATUS_LABELS[r.status] || r.status}
+          {STATUS_HINTS[r.status] ? ` · ${STATUS_HINTS[r.status]}` : ''}
           {r.confirmation_code ? ` · ${r.confirmation_code}` : ''}
           {r.party_size > 1 ? ` · ${r.party_size} plazas` : ''}
         </Text>

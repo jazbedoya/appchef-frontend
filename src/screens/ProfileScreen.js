@@ -10,11 +10,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
 import { selectUser, selectIsHost, logoutUser } from '../store/authSlice';
-import {
-  fetchPendingApprovals, selectPendingApprovals,
-  approveReservation, rejectReservation,
-  selectEvents,
-} from '../store/eventsSlice';
 import eventsService from '../services/eventsService';
 import { userApi } from '../services/api';
 import { colors } from '../theme/colors';
@@ -30,14 +25,10 @@ export default function ProfileScreen({ navigation }) {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
   const isHost = useSelector(selectIsHost);
-  const pendingApprovals = useSelector(selectPendingApprovals);
-  const allEvents = useSelector(selectEvents);
   const [editModal, setEditModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
   const [saving, setSaving] = useState(false);
-  const [guestNames, setGuestNames] = useState({});
-  const [actioningId, setActioningId] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [reviewMeta, setReviewMeta] = useState({ total: 0, average_rating: null });
   const [editAvatar, setEditAvatar] = useState(null);
@@ -49,54 +40,7 @@ export default function ProfileScreen({ navigation }) {
         setReviewMeta({ total: d.total, average_rating: d.average_rating });
       }).catch(() => {});
     }
-    if (isHost) dispatch(fetchPendingApprovals());
-  }, [dispatch, user?.id, isHost]);
-
-  useEffect(() => {
-    if (pendingApprovals.length === 0) return;
-    const unknownIds = [...new Set(pendingApprovals.map(r => r.guest_id))].filter(id => !guestNames[id]);
-    unknownIds.forEach(async (guestId) => {
-      try {
-        const res = await userApi.get(`/users/${guestId}`);
-        const u = res.data;
-        const name = u.profile?.first_name
-          ? `${u.profile.first_name} ${u.profile.last_name || ''}`.trim()
-          : u.username || u.email;
-        setGuestNames(prev => ({ ...prev, [guestId]: name }));
-      } catch {
-        setGuestNames(prev => ({ ...prev, [guestId]: 'Invitado' }));
-      }
-    });
-  }, [pendingApprovals]);
-
-  const getEventTitle = (eventId) => allEvents.find(e => e.id === eventId)?.title || 'Cena';
-
-  const handleApprove = async (reservationId) => {
-    setActioningId(reservationId);
-    const result = await dispatch(approveReservation(reservationId));
-    setActioningId(null);
-    if (approveReservation.fulfilled.match(result)) {
-      Alert.alert('Aprobada', `Reserva confirmada.\nCódigo: ${result.payload.confirmation_code || ''}`);
-    } else {
-      Alert.alert('Error', result.payload || 'No se pudo aprobar');
-    }
-  };
-
-  const handleReject = (reservationId) => {
-    Alert.alert('Rechazar solicitud', '¿Seguro que quieres rechazar esta solicitud?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Rechazar', style: 'destructive', onPress: async () => {
-          setActioningId(reservationId);
-          const result = await dispatch(rejectReservation(reservationId));
-          setActioningId(null);
-          if (!rejectReservation.fulfilled.match(result)) {
-            Alert.alert('Error', result.payload || 'No se pudo rechazar');
-          }
-        },
-      },
-    ]);
-  };
+    }, [dispatch, user?.id]);
 
   const initials = (user?.username || user?.email || '?')[0].toUpperCase();
   const displayName = user?.profile?.first_name
@@ -251,47 +195,6 @@ export default function ProfileScreen({ navigation }) {
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </Pressable>
         <View style={s.rule} />
-
-        {/* ── Pending approvals (host) ── */}
-        {isHost && pendingApprovals.length > 0 && (
-          <>
-            <Text style={s.sectionLabel}>SOLICITUDES PENDIENTES</Text>
-            <Text style={s.sectionHint}>
-              {pendingApprovals.length} solicitud{pendingApprovals.length > 1 ? 'es' : ''} esperando tu respuesta
-            </Text>
-            {pendingApprovals.map((r) => (
-              <View key={r.id} style={s.approvalCard}>
-                <View style={s.approvalTop}>
-                  <View style={s.approvalAvatar}>
-                    <Text style={s.approvalInitial}>{(guestNames[r.guest_id] || '?')[0].toUpperCase()}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.approvalName}>{guestNames[r.guest_id] || 'Cargando...'}</Text>
-                    <Text style={s.approvalMeta}>
-                      {r.party_size} {r.party_size === 1 ? 'plaza' : 'plazas'} · €{Number(r.total_amount).toFixed(0)}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={s.approvalEvent}>{getEventTitle(r.event_id)}</Text>
-                <View style={s.approvalActions}>
-                  {actioningId === r.id ? (
-                    <ActivityIndicator size="small" color={colors.accent} />
-                  ) : (
-                    <>
-                      <Pressable style={s.btnOutline} onPress={() => handleReject(r.id)}>
-                        <Text style={s.btnOutlineText}>RECHAZAR</Text>
-                      </Pressable>
-                      <Pressable style={s.btnFill} onPress={() => handleApprove(r.id)}>
-                        <Text style={s.btnFillText}>APROBAR</Text>
-                      </Pressable>
-                    </>
-                  )}
-                </View>
-              </View>
-            ))}
-            <View style={s.rule} />
-          </>
-        )}
 
         {/* ── Reseñas recibidas ── */}
         <Text style={s.sectionLabel}>RESEÑAS RECIBIDAS</Text>
