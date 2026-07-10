@@ -164,14 +164,16 @@ const EventDetailScreen = ({ route, navigation }) => {
     ? new Date(event_date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
     : '';
   const price = parseFloat(price_per_person || 0);
-  const total = (price * partySize).toFixed(2);
+  const subtotal = price * partySize;
+  const serviceFee = Math.max(subtotal * 0.10, 2);
+  const total = (subtotal + serviceFee).toFixed(2);
   const menuCourses = menu?.courses || (Array.isArray(menu) ? menu : null);
 
   const handleReserve = () => {
     if (!user) { Alert.alert('Inicia sesión', 'Necesitas una cuenta para reservar.'); return; }
     Alert.alert(
       'Solicitar plaza',
-      `${partySize} plaza${partySize > 1 ? 's' : ''} en "${title}"\nTotal: €${total}\n\nEl anfitrión confirmará tu solicitud.`,
+      `${partySize} plaza${partySize > 1 ? 's' : ''} en "${title}"\n\nPrecio: €${subtotal.toFixed(0)}\nGastos de servicio: €${serviceFee.toFixed(2)}\nTotal: €${total}\n\nEl anfitrión confirmará tu solicitud.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {

@@ -141,7 +141,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
           <Pressable
             style={styles.createBtn}
-            onPress={() => navigation.navigate('CreateEvent')}
+            onPress={() => navigation.navigate('StripeOnboarding')}
           >
             <Text style={styles.createBtnText}>Crear cena +</Text>
           </Pressable>
@@ -167,7 +167,7 @@ const HomeScreen = ({ navigation }) => {
             </Text>
             <Pressable
               style={[styles.createBtn, { marginTop: spacing.md }]}
-              onPress={() => navigation.navigate('CreateEvent')}
+              onPress={() => navigation.navigate('StripeOnboarding')}
             >
               <Text style={styles.createBtnText}>Crear cena +</Text>
             </Pressable>

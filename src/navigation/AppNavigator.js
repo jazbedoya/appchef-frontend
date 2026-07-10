@@ -22,6 +22,7 @@ import ChefProfileScreen from '../screens/ChefProfileScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import MisCenasScreen from '../screens/MisCenasScreen';
 import FollowListScreen from '../screens/FollowListScreen';
+import StripeOnboardingScreen from '../screens/StripeOnboardingScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -210,6 +211,11 @@ const MainTabNavigator = () => (
 const AuthenticatedStack = () => (
   <RootStack.Navigator screenOptions={{ headerShown: false }}>
     <RootStack.Screen name="MainTabs" component={MainTabNavigator} />
+    <RootStack.Screen
+      name="StripeOnboarding"
+      component={StripeOnboardingScreen}
+      options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+    />
     <RootStack.Screen
       name="CreateEvent"
       component={CreateEventScreen}
