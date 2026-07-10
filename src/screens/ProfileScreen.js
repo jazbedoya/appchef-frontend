@@ -229,7 +229,7 @@ export default function ProfileScreen({ navigation }) {
         {/* ── Host CTA ── */}
         {!isHost && (
           <Pressable style={s.hostCta}
-            onPress={() => Alert.alert('Próximamente', 'Podrás convertirte en anfitrión.')}>
+            onPress={() => navigation.navigate('StripeOnboarding')}>
             <View style={{ flex: 1 }}>
               <Text style={s.hostCtaTitle}>¿Quieres cocinar?</Text>
               <Text style={s.hostCtaSub}>Conviértete en anfitrión y abre tu mesa.</Text>
