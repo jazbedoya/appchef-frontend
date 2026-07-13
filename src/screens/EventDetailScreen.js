@@ -21,6 +21,7 @@ import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
 import RatingStars from '../components/RatingStars';
 import eventsService from '../services/eventsService';
+import { hapticSuccess, hapticError, hapticMedium } from '../lib/haptics';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const HERO_H = Math.round(SH * 0.40);
@@ -450,6 +451,7 @@ const EventDetailScreen = ({ route, navigation }) => {
             amount={paymentModal.amount}
             currency="eur"
             onSuccess={() => {
+              hapticSuccess();
               setPaymentModal(null);
               Alert.alert(
                 'Solicitud enviada',
@@ -466,6 +468,7 @@ const EventDetailScreen = ({ route, navigation }) => {
             }}
             onError={(msg) => {
               setPaymentModal(null);
+              hapticError();
               Alert.alert('Error de pago', msg || 'No se pudo procesar el pago.');
             }}
           />

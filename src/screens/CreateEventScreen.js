@@ -14,6 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { selectUser } from '../store/authSlice';
 import { reservationApi } from '../services/api';
+import { hapticSuccess, hapticError } from '../lib/haptics';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
@@ -165,6 +166,7 @@ export default function CreateEventScreen({ navigation }) {
       };
       const res = await reservationApi.post('/events', body);
       await reservationApi.post(`/events/${res.data.id}/publish`);
+      hapticSuccess();
       Alert.alert('¡Publicada!', 'Tu cena ya está en cartelera.', [
         { text: 'Ver inicio', onPress: () => navigation.goBack() },
       ]);

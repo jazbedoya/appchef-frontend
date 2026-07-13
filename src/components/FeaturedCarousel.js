@@ -13,7 +13,6 @@ import { radius } from '../theme/radius';
 import { sizes } from '../theme/sizes';
 import { typography } from '../theme/typography';
 
-const AUTOPLAY_MS = 4500;
 
 const CUISINE_IMAGES = {
   Italiana:     'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80',
@@ -81,18 +80,18 @@ export default function FeaturedCarousel({ data, onPressItem }) {
 
   const listRef = useRef(null);
   const [index, setIndex] = useState(0);
-  const pausedRef = useRef(false);
 
+  // Swipe hint: nudge right and back once on first load
+  const hintDone = useRef(false);
   useEffect(() => {
-    if (data.length <= 1) return;
-    const id = setInterval(() => {
-      if (pausedRef.current || !listRef.current) return;
-      const next = (index + 1) % data.length;
-      listRef.current.scrollToOffset({ offset: next * interval, animated: true });
-      setIndex(next);
-    }, AUTOPLAY_MS);
-    return () => clearInterval(id);
-  }, [index, interval, data.length]);
+    if (hintDone.current || data.length <= 1 || !listRef.current) return;
+    hintDone.current = true;
+    const t = setTimeout(() => {
+      listRef.current?.scrollToOffset({ offset: 40, animated: true });
+      setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 400);
+    }, 800);
+    return () => clearTimeout(t);
+  }, [data.length]);
 
   const onMomentumEnd = useCallback(
     (e) => {
@@ -128,8 +127,6 @@ export default function FeaturedCarousel({ data, onPressItem }) {
         renderItem={({ item }) => (
           <Slide item={item} width={cardW} onPress={() => onPressItem?.(item)} />
         )}
-        onScrollBeginDrag={() => { pausedRef.current = true; }}
-        onScrollEndDrag={() => { pausedRef.current = false; }}
         onMomentumScrollEnd={onMomentumEnd}
       />
 

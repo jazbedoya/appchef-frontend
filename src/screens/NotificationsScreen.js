@@ -15,6 +15,8 @@ import { Modal, TextInput, Platform } from 'react-native';
 import { useDispatch } from 'react-redux';
 import { approveReservation, rejectReservation } from '../store/eventsSlice';
 import notificationsService from '../services/notificationsService';
+import { hapticSuccess, hapticError, hapticMedium } from '../lib/haptics';
+import { SkeletonList } from '../components/Skeleton';
 
 const ICON_MAP = {
   RESERVATION_REQUEST: 'calendar-outline',
@@ -143,8 +145,10 @@ const NotificationsScreen = ({ navigation }) => {
       setResolved((p) => ({ ...p, [notifId]: 'approved' }));
       notificationsService.markRead(notifId).catch(() => {});
       const code = result.payload?.confirmation_code || '';
+      hapticSuccess();
       Alert.alert('Aprobada', `Reserva confirmada.\nC\u00F3digo: ${code}${msg ? `\n\nTu mensaje: "${msg}"` : ''}`);
     } else {
+      hapticError();
       Alert.alert('Error', result.payload || 'No se pudo aprobar');
     }
   };
@@ -244,7 +248,7 @@ const NotificationsScreen = ({ navigation }) => {
   if (loading) {
     return (
       <SafeAreaView style={st.safe} edges={['top']}>
-        <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.xxl }} />
+        <SkeletonList count={5} />
       </SafeAreaView>
     );
   }

@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── Service URLs ───
 import { Platform } from 'react-native';
-const HOST = Platform.OS === 'web' ? 'localhost' : '192.168.1.48';
+const HOST = Platform.OS === 'web' ? 'localhost' : '192.168.1.99';
 
 export const USER_SERVICE_URL = `http://${HOST}:8001`;
 export const RESERVATION_SERVICE_URL = `http://${HOST}:8002`;

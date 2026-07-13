@@ -8,11 +8,12 @@ import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
+import { hapticSelection } from '../lib/haptics';
 
 export default function Chip({ label, selected = false, onPress = () => {} }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => { hapticSelection(); onPress(); }}
       style={[styles.base, selected ? styles.selected : styles.unselected]}
     >
       <Text style={[styles.text, { color: selected ? colors.onAccent : colors.textPrimary }]}>{label}</Text>

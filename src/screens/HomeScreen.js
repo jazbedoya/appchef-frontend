@@ -1,177 +1,286 @@
-// HomeScreen.js — Rediseño editorial premium con carrusel destacado
-// Conectado a Redux (datos reales del backend).
-import React, { useEffect, useCallback, useState, useMemo } from 'react';
+// HomeScreen.js — Feed inteligente: proximidad + buscador + secciones
+import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import {
-  View, Text, ScrollView, Pressable, StyleSheet,
-  RefreshControl, ActivityIndicator,
+  View, Text, ScrollView, Pressable, TextInput, StyleSheet,
+  RefreshControl, FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
+import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
+import * as Location from 'expo-location';
 
 import {
-  fetchEvents,
-  selectEvents,
-  selectEventsLoading,
-  selectEventsError,
+  fetchEvents, fetchNearbyEvents,
+  selectEvents, selectNearbyEvents,
+  selectEventsLoading, selectEventsError,
 } from '../store/eventsSlice';
 import { selectUser } from '../store/authSlice';
+import { reservationApi } from '../services/api';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
 import FeaturedCarousel from '../components/FeaturedCarousel';
-import NotificationBell from '../components/NotificationBell';
-
-// ─── Helpers ───
+import MinimalHeader from '../components/MinimalHeader';
+import { SkeletonCarousel, SkeletonList } from '../components/Skeleton';
+import { hapticSelection } from '../lib/haptics';
 
 const getCuisineLabel = (event) => {
   try {
-    const ct = typeof event.cuisine_type === 'string'
-      ? JSON.parse(event.cuisine_type)
-      : event.cuisine_type;
+    const ct = typeof event.cuisine_type === 'string' ? JSON.parse(event.cuisine_type) : event.cuisine_type;
     return Array.isArray(ct) ? ct[0] : ct;
   } catch { return ''; }
 };
-
 const getSpots = (event) => Math.max(0, (event.max_guests || 0) - (event.confirmed_guests || 0));
-
-const getSeasonLabel = () => {
-  const m = new Date().getMonth();
-  if (m < 3) return 'Invierno';
-  if (m < 6) return 'Primavera';
-  if (m < 9) return 'Verano';
-  return 'Otoño';
+const getGreeting = () => {
+  const h = new Date().getHours();
+  if (h < 6) return 'Buenas noches';
+  if (h < 13) return 'Buenos días';
+  if (h < 20) return 'Buenas tardes';
+  return 'Buenas noches';
+};
+const formatDist = (km) => {
+  if (km == null) return '';
+  return km < 1 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
 };
 
-const FEATURED_COUNT = 50;
-
-// ─── Component ───
+const FEATURED_COUNT = 5;
+const NEARBY_THRESHOLD = 3;
 
 const HomeScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
-  const events = useSelector(selectEvents);
+  const allEvents = useSelector(selectEvents);
+  const nearbyEvents = useSelector(selectNearbyEvents);
   const isLoading = useSelector(selectEventsLoading);
   const error = useSelector(selectEventsError);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasLocation, setHasLocation] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const debounceRef = useRef(null);
 
-  const loadEvents = useCallback(() => {
+  const displayName = user?.profile?.first_name || user?.username || '';
+
+  // Load with location cascade
+  const loadFeed = useCallback(async () => {
+    // Always load all events as fallback
     dispatch(fetchEvents({ page: 1, perPage: 50 }));
-  }, [dispatch]);
 
-  useEffect(() => { loadEvents(); }, [loadEvents]);
+    // Try to get location for nearby
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        dispatch(fetchNearbyEvents({ lat: loc.coords.latitude, lng: loc.coords.longitude, radius_km: 50 }));
+        setHasLocation(true);
+        return;
+      }
+    } catch {}
+
+    // Fallback: user's city
+    if (user?.profile?.city) {
+      dispatch(fetchEvents({ page: 1, perPage: 50, city: user.profile.city }));
+    }
+    setHasLocation(false);
+  }, [dispatch, user?.profile?.city]);
+
+  useEffect(() => { loadFeed(); }, [loadFeed]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await dispatch(fetchEvents({ page: 1, perPage: 50 }));
+    await loadFeed();
     setRefreshing(false);
-  }, [dispatch]);
+  }, [loadFeed]);
 
-  const featured = events.slice(0, FEATURED_COUNT);
-  const cartelera = events;
+  // Search with debounce
+  const onSearch = (text) => {
+    setSearchQuery(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!text.trim()) { setSearchResults(null); return; }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await reservationApi.get('/events', { params: { q: text.trim(), per_page: 20 } });
+        setSearchResults(res.data.events || []);
+      } catch { setSearchResults([]); }
+      setSearching(false);
+    }, 400);
+  };
 
-  // Group events by city for "Por ciudad" section
-  const citySections = useMemo(() => {
-    const map = {};
-    events.forEach((ev) => {
-      const city = ev.city || 'Sin ubicación';
-      if (!map[city]) map[city] = [];
-      map[city].push(ev);
-    });
-    return Object.entries(map)
-      .sort((a, b) => b[1].length - a[1].length)
-      .slice(0, 6);
-  }, [events]);
+  // Feed data
+  const feedEvents = hasLocation ? nearbyEvents : allEvents;
+  const featured = feedEvents.slice(0, FEATURED_COUNT);
+  const nearby = hasLocation ? feedEvents : [];
+  const otherEvents = hasLocation && nearby.length < NEARBY_THRESHOLD
+    ? allEvents.filter(e => !nearby.find(n => n.id === e.id))
+    : [];
+  const cartelera = hasLocation ? feedEvents.slice(FEATURED_COUNT) : allEvents;
 
-  if (isLoading && events.length === 0) {
+  if (isLoading && allEvents.length === 0) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.loadingWrap}>
-          <Text style={styles.wordmark}>APP CHEF</Text>
-          <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.xl }} />
-        </View>
+      <SafeAreaView style={st.safe} edges={['top']}>
+        <MinimalHeader edition={`N.º ${format(new Date(), 'MM')}`} greeting={`${getGreeting()},`} name={displayName}
+          onBellPress={() => navigation.navigate('Notifications')} />
+        <SkeletonCarousel />
+        <SkeletonList count={3} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-      >
-        {/* ── Top section ── */}
-        <View>
-          {/* Masthead */}
-          <View style={styles.masthead}>
-            <View style={styles.mastheadMeta}>
-              <Text style={styles.metaLabel}>
-                N.º {format(new Date(), 'MM')} · {getSeasonLabel()}
-              </Text>
-              <View style={styles.mastheadRight}>
-                <Text style={styles.metaLabel}>
-                  {user?.username ? user.username.toUpperCase() : ''}
-                </Text>
-                <NotificationBell onPress={() => navigation.navigate('Notifications')} />
-              </View>
-            </View>
-            <View style={styles.rule} />
-            <Text style={styles.wordmark}>APP CHEF</Text>
-            <View style={styles.rule} />
-            <Text style={[styles.metaLabel, styles.centered]}>
-              Cenas privadas por invitación
-            </Text>
-          </View>
+    <SafeAreaView style={st.safe} edges={['top']}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}>
 
-          {/* Carrusel destacadas */}
-          <FeaturedCarousel
-            data={featured}
-            onPressItem={(item) => navigation.navigate('EventDetail', { eventId: item.id })}
+        <MinimalHeader edition={`N.º ${format(new Date(), 'MM')}`} greeting={`${getGreeting()},`} name={displayName}
+          onBellPress={() => navigation.navigate('Notifications')} />
+
+        {/* ── Buscador ── */}
+        <View style={st.searchWrap}>
+          <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+          <TextInput
+            style={st.searchInput}
+            placeholder="Busca ciudad, chef o tipo de cocina..."
+            placeholderTextColor={colors.placeholder}
+            value={searchQuery}
+            onChangeText={onSearch}
+            returnKeyType="search"
           />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => { setSearchQuery(''); setSearchResults(null); }}>
+              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            </Pressable>
+          )}
         </View>
 
-        {/* ── Crear cena (empujado abajo) ── */}
-        <View style={styles.createBlock}>
-          <View style={styles.createCopy}>
-            <Text style={styles.createTitle}>¿Anfitrión?</Text>
-            <Text style={styles.createSub}>Abre tu mesa e invita comensales.</Text>
+        {/* ── Search results ── */}
+        {searchResults !== null ? (
+          <View style={st.searchResultsWrap}>
+            {searching ? <SkeletonList count={3} /> : searchResults.length === 0 ? (
+              <Text style={st.emptySearch}>Sin resultados para "{searchQuery}"</Text>
+            ) : (
+              searchResults.map((ev) => (
+                <Pressable key={ev.id} style={({ pressed }) => [st.row, pressed && { opacity: 0.7 }]}
+                  onPress={() => { setSearchQuery(''); setSearchResults(null); navigation.navigate('EventDetail', { eventId: ev.id }); }}>
+                  <Text style={st.rowNum}>{getCuisineLabel(ev)}</Text>
+                  <View style={st.rowBody}>
+                    <Text style={st.rowTitle}>{ev.title}</Text>
+                    <Text style={st.rowMeta}>{ev.city} · {ev.host_name || 'Chef'} · {getSpots(ev)} plazas</Text>
+                  </View>
+                  <Text style={st.rowPrice}>€{Number(ev.price_per_person).toFixed(0)}</Text>
+                </Pressable>
+              ))
+            )}
           </View>
-          <Pressable
-            style={styles.createBtn}
-            onPress={() => navigation.navigate('StripeOnboarding')}
-          >
-            <Text style={styles.createBtnText}>Crear cena +</Text>
-          </Pressable>
-        </View>
+        ) : (
+          <>
+            {/* ── Location hint ── */}
+            {!hasLocation && (
+              <Pressable style={st.locationHint} onPress={async () => {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                if (status === 'granted') loadFeed();
+              }}>
+                <Ionicons name="location-outline" size={14} color={colors.accent} />
+                <Text style={st.locationHintText}>Activa la ubicación para ver cenas cerca de ti</Text>
+              </Pressable>
+            )}
 
+            {/* ── Carrusel ── */}
+            <FeaturedCarousel
+              data={featured}
+              onPressItem={(item) => navigation.navigate('EventDetail', { eventId: item.id })}
+            />
 
-        {/* ── Error ── */}
-        {error && events.length === 0 && (
-          <View style={styles.errorBlock}>
-            <Text style={styles.standfirst}>No pudimos cargar las cenas.</Text>
-            <Pressable onPress={loadEvents}>
-              <Text style={styles.linkAccent}>REINTENTAR →</Text>
-            </Pressable>
-          </View>
-        )}
+            {/* ── Cerca de ti / En cartelera ── */}
+            {hasLocation && nearby.length > 0 && (
+              <>
+                <View style={st.ruleFull} />
+                <Text style={st.sectionLabel}>CERCA DE TI</Text>
+                <View style={st.list}>
+                  {nearby.slice(FEATURED_COUNT).map((ev, i) => {
+                    const full = getSpots(ev) <= 0;
+                    const own = user?.id && ev.host_id === user.id;
+                    return (
+                      <Pressable key={ev.id} style={({ pressed }) => [st.row, pressed && { opacity: 0.7 }]}
+                        onPress={() => navigation.navigate('EventDetail', { eventId: ev.id })}>
+                        <Text style={st.rowNum}>{String(i + FEATURED_COUNT + 1).padStart(2, '0')}</Text>
+                        <View style={st.rowBody}>
+                          <Text style={st.rowTitle}>{ev.title}{own ? ' · Tu cena' : ''}{full ? ' · Completa' : ''}</Text>
+                          <Text style={st.rowMeta}>
+                            {getCuisineLabel(ev)} · {ev.city} · {getSpots(ev)} plazas
+                            {ev.distance_km != null ? ` · ${formatDist(ev.distance_km)}` : ''}
+                          </Text>
+                        </View>
+                        <Text style={st.rowPrice}>€{Number(ev.price_per_person).toFixed(0)}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            )}
 
-        {/* ── Vacío ── */}
-        {!isLoading && !error && events.length === 0 && (
-          <View style={styles.errorBlock}>
-            <Text style={styles.coverTitle}>Aún no hay cenas</Text>
-            <Text style={styles.standfirst}>
-              Sé el primero en abrir tu mesa.
-            </Text>
-            <Pressable
-              style={[styles.createBtn, { marginTop: spacing.md }]}
-              onPress={() => navigation.navigate('StripeOnboarding')}
-            >
-              <Text style={styles.createBtnText}>Crear cena +</Text>
-            </Pressable>
-          </View>
+            {/* Other cities if few nearby */}
+            {hasLocation && nearby.length < NEARBY_THRESHOLD + FEATURED_COUNT && otherEvents.length > 0 && (
+              <>
+                <View style={st.ruleFull} />
+                <Text style={st.sectionLabel}>TAMBIÉN EN ESPAÑA</Text>
+                <View style={st.list}>
+                  {otherEvents.slice(0, 10).map((ev, i) => (
+                    <Pressable key={ev.id} style={({ pressed }) => [st.row, pressed && { opacity: 0.7 }]}
+                      onPress={() => navigation.navigate('EventDetail', { eventId: ev.id })}>
+                      <Text style={st.rowNum}>{String(i + 1).padStart(2, '0')}</Text>
+                      <View style={st.rowBody}>
+                        <Text style={st.rowTitle}>{ev.title}</Text>
+                        <Text style={st.rowMeta}>{getCuisineLabel(ev)} · {ev.city} · {getSpots(ev)} plazas</Text>
+                      </View>
+                      <Text style={st.rowPrice}>€{Number(ev.price_per_person).toFixed(0)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* No location: show all as En cartelera */}
+            {!hasLocation && cartelera.length > 0 && (
+              <>
+                <View style={st.ruleFull} />
+                <Text style={st.sectionLabel}>En cartelera</Text>
+                <View style={st.list}>
+                  {cartelera.map((ev, i) => (
+                    <Pressable key={ev.id} style={({ pressed }) => [st.row, pressed && { opacity: 0.7 }]}
+                      onPress={() => navigation.navigate('EventDetail', { eventId: ev.id })}>
+                      <Text style={st.rowNum}>{String(i + 1).padStart(2, '0')}</Text>
+                      <View style={st.rowBody}>
+                        <Text style={st.rowTitle}>{ev.title}</Text>
+                        <Text style={st.rowMeta}>{getCuisineLabel(ev)} · {ev.city} · {getSpots(ev)} plazas</Text>
+                      </View>
+                      <Text style={st.rowPrice}>€{Number(ev.price_per_person).toFixed(0)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* Error */}
+            {error && allEvents.length === 0 && (
+              <View style={st.errorBlock}>
+                <Text style={st.standfirst}>No pudimos cargar las cenas.</Text>
+                <Pressable onPress={loadFeed}><Text style={st.linkAccent}>REINTENTAR →</Text></Pressable>
+              </View>
+            )}
+
+            {/* Empty */}
+            {!isLoading && !error && allEvents.length === 0 && (
+              <View style={st.errorBlock}>
+                <Text style={st.coverTitle}>Aún no hay cenas</Text>
+                <Text style={st.standfirst}>Sé el primero en abrir tu mesa.</Text>
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -180,102 +289,50 @@ const HomeScreen = ({ navigation }) => {
 
 export default HomeScreen;
 
-// ─── Styles ───
-
-const styles = StyleSheet.create({
+const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { flexGrow: 1, justifyContent: 'space-between' },
-  loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scroll: { flexGrow: 1, paddingBottom: 120 },
 
-  // Masthead
-  masthead: { paddingHorizontal: spacing.gutter, paddingTop: spacing.lg, paddingBottom: spacing.sm },
-  mastheadMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  mastheadRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  metaLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 1.4 },
-  centered: { textAlign: 'center', marginTop: spacing.xxs },
-  rule: { height: borders.hairline, backgroundColor: colors.border, marginVertical: spacing.sm },
-  wordmark: { ...typography.masthead, color: colors.textPrimary, textAlign: 'center', paddingVertical: spacing.xs },
+  // Search
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    marginHorizontal: spacing.gutter, marginBottom: spacing.md,
+    backgroundColor: colors.surface, borderRadius: radius.pill,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2,
+  },
+  searchInput: { ...typography.body, flex: 1, color: colors.textPrimary, fontSize: 14 },
+  searchResultsWrap: { paddingHorizontal: spacing.gutter, paddingBottom: spacing.xxl },
+  emptySearch: { ...typography.standfirst, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.xxl },
 
-  // Cover (kept for empty/error states)
-  coverTitle: { ...typography.coverTitle, color: colors.textPrimary, marginBottom: spacing.sm },
-  standfirst: { ...typography.standfirst, color: colors.textSecondary },
-  linkAccent: {
-    ...typography.price,
-    color: colors.textPrimary,
-    borderBottomWidth: borders.medium,
-    borderBottomColor: colors.accent,
-    paddingBottom: spacing.xxs / 2,
+  // Location hint
+  locationHint: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    marginHorizontal: spacing.gutter, marginBottom: spacing.sm,
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
+    backgroundColor: 'rgba(191,71,38,0.06)', borderRadius: radius.xs,
   },
+  locationHintText: { ...typography.body, color: colors.accent, fontSize: 12 },
 
-  // Create block
-  createBlock: {
-    marginHorizontal: spacing.gutter,
-    marginBottom: spacing.xl,
-    borderWidth: borders.medium,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  createCopy: { flex: 1 },
-  createTitle: { ...typography.dinnerTitle, fontSize: 22, color: colors.textPrimary, marginBottom: spacing.xxs },
-  createSub: { ...typography.body, color: colors.textMuted, fontSize: 14, lineHeight: 20 },
-  createBtn: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.xs,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.md,
-  },
-  createBtnText: { ...typography.button, color: colors.onAccent, fontSize: 11 },
-
-  // Por ciudad
-  cityTrack: {
-    paddingHorizontal: spacing.gutter,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  cityCard: {
-    borderWidth: borders.hairline,
-    borderColor: colors.border,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    minWidth: 100,
-  },
-  cityName: { ...typography.dinnerTitle, fontSize: 16, color: colors.textPrimary, marginBottom: spacing.xxs },
-  cityCount: { ...typography.label, color: colors.textMuted, letterSpacing: 1.2, fontSize: 9 },
-
-  // Cartelera
-  ruleFull: { height: borders.hairline, backgroundColor: colors.border, marginHorizontal: spacing.gutter },
+  // Sections
+  ruleFull: { height: borders.hairline, backgroundColor: colors.border, marginHorizontal: spacing.gutter, marginTop: spacing.md },
   sectionLabel: {
-    ...typography.label,
-    color: colors.textMuted,
-    letterSpacing: 2,
-    paddingHorizontal: spacing.gutter,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xs,
+    ...typography.label, color: colors.textMuted, letterSpacing: 2,
+    paddingHorizontal: spacing.gutter, paddingTop: spacing.md, paddingBottom: spacing.xs,
   },
   list: { paddingHorizontal: spacing.gutter },
   row: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    borderTopWidth: borders.hairline,
-    borderTopColor: colors.borderHairline,
+    flexDirection: 'row', alignItems: 'baseline', gap: spacing.md,
+    paddingVertical: spacing.sm, borderTopWidth: borders.hairline, borderTopColor: colors.borderHairline,
   },
-  rowNum: { ...typography.dinnerTitle, fontSize: 15, color: colors.accent, width: spacing.xl },
+  rowNum: { ...typography.dinnerTitle, fontSize: 13, color: colors.accent, width: spacing.xl },
   rowBody: { flex: 1 },
-  rowTitle: { ...typography.dinnerTitle, fontSize: 19, color: colors.textPrimary },
-  rowMeta: { ...typography.body, fontSize: 12, color: colors.textMuted, marginTop: spacing.xxs / 2 },
+  rowTitle: { ...typography.dinnerTitle, fontSize: 17, color: colors.textPrimary },
+  rowMeta: { ...typography.body, fontSize: 11, color: colors.textMuted, marginTop: spacing.xxs / 2 },
   rowPrice: { ...typography.price, color: colors.textMuted },
 
   // Error/empty
-  errorBlock: {
-    paddingHorizontal: spacing.gutter,
-    paddingVertical: spacing.xxl,
-    alignItems: 'center',
-    gap: spacing.md,
-  },
+  coverTitle: { ...typography.coverTitle, color: colors.textPrimary, marginBottom: spacing.sm },
+  standfirst: { ...typography.standfirst, color: colors.textSecondary },
+  linkAccent: { ...typography.price, color: colors.textPrimary, borderBottomWidth: borders.medium, borderBottomColor: colors.accent, paddingBottom: spacing.xxs / 2 },
+  errorBlock: { paddingHorizontal: spacing.gutter, paddingVertical: spacing.xxl, alignItems: 'center', gap: spacing.md },
 });

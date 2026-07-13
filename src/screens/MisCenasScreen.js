@@ -13,6 +13,8 @@ import { es } from 'date-fns/locale';
 import { selectUser } from '../store/authSlice';
 import { fetchUserReservations, selectMyReservations, fetchPendingApprovals, selectPendingApprovals } from '../store/eventsSlice';
 import { reservationApi } from '../services/api';
+import { SkeletonList } from '../components/Skeleton';
+import { hapticSelection } from '../lib/haptics';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
@@ -133,7 +135,7 @@ export default function MisCenasScreen({ navigation }) {
   };
 
   if (loading) {
-    return <SafeAreaView style={s.safe} edges={['top']}><ActivityIndicator color={colors.accent} style={{ marginTop: spacing.xxl }} /></SafeAreaView>;
+    return <SafeAreaView style={s.safe} edges={['top']}><SkeletonList count={4} /></SafeAreaView>;
   }
 
   return (
@@ -146,10 +148,10 @@ export default function MisCenasScreen({ navigation }) {
         <View style={{ width: 22 }} />
       </View>
       <View style={s.tabs}>
-        <Pressable style={[s.tab, tab === 'host' && s.tabActive]} onPress={() => setTab('host')}>
+        <Pressable style={[s.tab, tab === 'host' && s.tabActive]} onPress={() => { hapticSelection(); setTab('host'); }}>
           <Text style={[s.tabText, tab === 'host' && s.tabTextActive]}>Como anfitrión</Text>
         </Pressable>
-        <Pressable style={[s.tab, tab === 'guest' && s.tabActive]} onPress={() => setTab('guest')}>
+        <Pressable style={[s.tab, tab === 'guest' && s.tabActive]} onPress={() => { hapticSelection(); setTab('guest'); }}>
           <Text style={[s.tabText, tab === 'guest' && s.tabTextActive]}>Reservadas</Text>
         </Pressable>
       </View>

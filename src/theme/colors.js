@@ -50,6 +50,10 @@ export const colors = {
   // Chrome
   scrim: 'rgba(26,22,19,0.28)', // home indicator / velos
 
+  // Tab bar flotante
+  tabFloating: '#1A1613',
+  onTabFloating: '#EDE4D2',
+
   // Compat: old screens reference these tokens
   white: '#FFFFFF',
   cafe: '#1A1613',

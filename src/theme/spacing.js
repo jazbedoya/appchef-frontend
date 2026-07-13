@@ -20,4 +20,6 @@ export const spacing = {
   xxxl: 44,
   gutter: 26, // margen horizontal estándar de pantalla (portada / listas)
   tabBarBottom: 28, // reserva inferior del tab bar (safe-area aprox.)
+  floatingTabInset: 18,
+  floatingTabBottom: 26,
 };

@@ -6,11 +6,12 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
+import { hapticLight } from '../lib/haptics';
 
 export default function PrimaryButton({ label, onPress = () => {}, variant = 'accent', style }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => { hapticLight(); onPress(); }}
       style={({ pressed }) => [
         styles.base,
         variant === 'dark' ? styles.dark : styles.accent,

@@ -46,6 +46,8 @@ export default function ChefProfileScreen({ route, navigation }) {
   useEffect(() => { loadProfile(); loadReviews(); }, [loadProfile, loadReviews]);
 
   const toggleFollow = async () => {
+    const { hapticSuccess } = require('../lib/haptics');
+    hapticSuccess();
     const was = following;
     setFollowing(!was);
     setFollowLoading(true);

@@ -5,6 +5,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Font from 'expo-font';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 
 import { store } from './src/store';
 import { loadStoredUser, selectIsAuthenticated, selectIsInitializing } from './src/store/authSlice';
@@ -18,9 +20,11 @@ function AppInner() {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const isInitializing = useSelector(selectIsInitializing);
   const [fontsReady, setFontsReady] = useState(false);
+  const [onboardingSeen, setOnboardingSeen] = useState(null); // null = loading, true/false
 
   useEffect(() => {
     dispatch(loadStoredUser());
+    AsyncStorage.getItem('@appchef:onboarding_seen').then(v => setOnboardingSeen(v === 'true'));
 
     Font.loadAsync({
       Newsreader_400Regular: require('@expo-google-fonts/newsreader/400Regular/Newsreader_400Regular.ttf'),
@@ -39,13 +43,17 @@ function AppInner() {
       });
   }, [dispatch]);
 
-  if (!fontsReady || isInitializing) {
+  if (!fontsReady || isInitializing || onboardingSeen === null) {
     return (
       <View style={styles.loading}>
         <Text style={styles.wordmark}>APP CHEF</Text>
         <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.xl }} />
       </View>
     );
+  }
+
+  if (!onboardingSeen) {
+    return <OnboardingScreen onDone={() => setOnboardingSeen(true)} />;
   }
 
   return (

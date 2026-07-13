@@ -20,6 +20,9 @@ export const sizes = {
   dotActiveW: 22,
   dotH: 3,
   carouselPeek: 34,
+  // Floating tab bar
+  fabFloating: 44,
+  tabFloatingIcon: 22,
   // Create flow
   stepperBtn: 40,
   textareaMinSm: 80,

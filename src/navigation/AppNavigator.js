@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator as createStackNavigator } from '@react-navigation/native-stack';
 import { useSelector } from 'react-redux';
@@ -8,6 +8,8 @@ import { Ionicons as Icon } from '@expo/vector-icons';
 import { selectIsAuthenticated, selectIsInitializing } from '../store/authSlice';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
+import { radius } from '../theme/radius';
+import { sizes } from '../theme/sizes';
 import typography from '../theme/typography';
 
 // Screens
@@ -23,6 +25,7 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import MisCenasScreen from '../screens/MisCenasScreen';
 import FollowListScreen from '../screens/FollowListScreen';
 import StripeOnboardingScreen from '../screens/StripeOnboardingScreen';
+import { hapticSelection } from '../lib/haptics';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -177,32 +180,61 @@ const MainTabNavigator = () => (
       tabBarIcon: ({ focused, color }) => (
         <TabBarIcon name={route.name} focused={focused} color={color} />
       ),
-      tabBarActiveTintColor: colors.gold,
-      tabBarInactiveTintColor: colors.gray400,
+      tabBarActiveTintColor: colors.accent,
+      tabBarInactiveTintColor: colors.onTabFloating,
       tabBarStyle: {
-        backgroundColor: colors.white,
+        position: 'absolute',
+        bottom: spacing.floatingTabBottom,
+        left: spacing.floatingTabInset,
+        right: spacing.floatingTabInset,
+        height: 56,
+        borderRadius: radius.pill,
+        backgroundColor: colors.tabFloating,
         borderTopWidth: 0,
-        height: 62,
-        paddingBottom: Platform.OS === 'ios' ? 20 : 10,
-        paddingTop: 8,
-        shadowColor: '#2C3E2D',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 20,
+        paddingBottom: 0,
+        paddingTop: 0,
+        shadowColor: colors.textPrimary,
+        shadowOffset: { width: 0, height: 16 },
+        shadowOpacity: 0.4,
+        shadowRadius: 24,
         elevation: 12,
       },
-      tabBarLabelStyle: {
-        ...typography.labelSmall,
-        textTransform: 'none',
-        fontSize: 11,
-      },
+      tabBarShowLabel: false,
       headerShown: false,
     })}
   >
-    <Tab.Screen name="Inicio" component={HomeStackScreen} />
-    <Tab.Screen name="Map" component={MapStack} />
-    <Tab.Screen name="Chat" component={ChatStack} />
-    <Tab.Screen name="Profile" component={ProfileStack} />
+    <Tab.Screen name="Inicio" component={HomeStackScreen}
+      options={{ tabBarIcon: ({ focused }) => <Icon name={focused ? 'restaurant' : 'restaurant-outline'} size={sizes.tabFloatingIcon} color={focused ? colors.accent : colors.onTabFloating} /> }}
+    />
+    <Tab.Screen name="Map" component={MapStack}
+      options={{ tabBarIcon: ({ focused }) => <Icon name={focused ? 'map' : 'map-outline'} size={sizes.tabFloatingIcon} color={focused ? colors.accent : colors.onTabFloating} /> }}
+    />
+    <Tab.Screen name="Create" component={HomeStackScreen}
+      options={{
+        tabBarIcon: () => (
+          <View style={{
+            width: sizes.fabFloating, height: sizes.fabFloating, borderRadius: radius.pill,
+            backgroundColor: colors.accent,
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Icon name="add" size={sizes.tabFloatingIcon} color={colors.onAccent} />
+          </View>
+        ),
+      }}
+      listeners={({ navigation }) => ({
+        tabPress: (e) => {
+          e.preventDefault();
+          hapticSelection();
+          navigation.navigate('StripeOnboarding');
+        },
+      })}
+    />
+    <Tab.Screen name="Chat" component={ChatStack}
+      options={{ tabBarIcon: ({ focused }) => <Icon name={focused ? 'chatbubble' : 'chatbubble-outline'} size={sizes.tabFloatingIcon} color={focused ? colors.accent : colors.onTabFloating} /> }}
+    />
+    <Tab.Screen name="Profile" component={ProfileStack}
+      options={{ tabBarIcon: ({ focused }) => <Icon name={focused ? 'person' : 'person-outline'} size={sizes.tabFloatingIcon} color={focused ? colors.accent : colors.onTabFloating} /> }}
+    />
   </Tab.Navigator>
 );
 
