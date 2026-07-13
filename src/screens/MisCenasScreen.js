@@ -32,13 +32,21 @@ const STATUSES = {
   cancelled_by_host:  { label: 'Cancelada',   color: colors.textMuted, icon: 'close-outline' },
 };
 
-const CUISINE_IMAGES = {
-  Italiana:     'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=400&q=60',
-  Japonesa:     'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=400&q=60',
-  Vegana:       'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=60',
-  Española:     'https://images.unsplash.com/photo-1515443961218-a51367888e4b?w=400&q=60',
-};
-const DEFAULT_IMG = 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&q=60';
+const FALLBACK_IMGS = [
+  'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=400&q=60',
+  'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=400&q=60',
+  'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=60',
+  'https://images.unsplash.com/photo-1515443961218-a51367888e4b?w=400&q=60',
+  'https://images.unsplash.com/photo-1544025162-d76694265947?w=400&q=60',
+  'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&q=60',
+  'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=400&q=60',
+];
+function getEventImg(r) {
+  if (r.event_cover_image_url) return r.event_cover_image_url;
+  // Hash title for consistent varied fallback
+  const hash = (r.event_title || r.event_id || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return FALLBACK_IMGS[hash % FALLBACK_IMGS.length];
+}
 
 function fmtDate(d) {
   if (!d) return '';
@@ -76,12 +84,21 @@ export default function MisCenasScreen({ navigation }) {
   const pendingByEvent = {};
   pendingApprovals.forEach(r => { pendingByEvent[r.event_id] = (pendingByEvent[r.event_id] || 0) + 1; });
 
-  const upcoming = reservations.filter(r => ['confirmed', 'pending_approval', 'pending_payment'].includes(r.status));
-  const past = reservations.filter(r => !['confirmed', 'pending_approval', 'pending_payment'].includes(r.status));
+  const now = new Date();
+  const upcoming = reservations.filter(r => {
+    const isActive = ['confirmed', 'pending_approval', 'pending_payment'].includes(r.status);
+    const isFuture = r.event_date ? new Date(r.event_date) >= now : true;
+    return isActive && isFuture;
+  });
+  const past = reservations.filter(r => {
+    const isTerminal = ['completed', 'rejected', 'expired', 'cancelled_by_guest', 'cancelled_by_host'].includes(r.status);
+    const isPastDate = r.event_date && new Date(r.event_date) < now && ['confirmed'].includes(r.status);
+    return isTerminal || isPastDate;
+  });
 
   const renderGuestCard = (r) => {
     const st = STATUSES[r.status] || STATUSES.expired;
-    const img = r.event_cover_image_url || DEFAULT_IMG;
+    const img = getEventImg(r);
     const isPast = !['confirmed', 'pending_approval', 'pending_payment'].includes(r.status);
     return (
       <Pressable key={r.id} style={s.card}
@@ -96,10 +113,7 @@ export default function MisCenasScreen({ navigation }) {
             <Ionicons name={st.icon} size={13} color={st.color} />
             <Text style={[s.statusText, { color: st.color }]}>{st.label}</Text>
           </View>
-          <View style={s.cardFooter}>
-            <Text style={s.cardPrice}>€{Number(r.total_amount).toFixed(0)}</Text>
-            {r.confirmation_code && <Text style={s.cardCode}>{r.confirmation_code}</Text>}
-          </View>
+          <Text style={s.cardPrice}>€{Number(r.total_amount).toFixed(0)}</Text>
         </View>
         <Ionicons name="chevron-forward" size={14} color={colors.textMuted} style={{ alignSelf: 'center' }} />
       </Pressable>
@@ -110,7 +124,7 @@ export default function MisCenasScreen({ navigation }) {
     const pending = pendingByEvent[ev.id] || 0;
     const isPast = new Date(ev.event_date) < new Date();
     const isFull = ev.confirmed_guests >= ev.max_guests;
-    const img = ev.cover_image_url || DEFAULT_IMG;
+    const img = getEventImg({ event_cover_image_url: ev.cover_image_url, event_title: ev.title, event_id: ev.id });
     return (
       <Pressable key={ev.id} style={s.card}
         onPress={() => navigation.navigate('HostGuestList', { eventId: ev.id, eventTitle: ev.title })}>
