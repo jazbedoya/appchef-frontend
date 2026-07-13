@@ -224,9 +224,9 @@ const EventDetailScreen = ({ route, navigation }) => {
           {/* Overline on hero */}
           <View style={s.heroOverlay}>
             <Text style={s.heroOverline}>
-              {cuisineTags[0] || ''}{city ? ` \u00B7 ${city}` : ''}
+              {cuisineTags[0] || ''}{city ? ` · ${city}` : ''}
             </Text>
-            <Text style={s.heroPrice}>{'\u20AC'}{price.toFixed(0)}</Text>
+            {myRes?.status !== 'confirmed' && <Text style={s.heroPrice}>€{price.toFixed(0)}</Text>}
           </View>
         </View>
 
@@ -238,60 +238,91 @@ const EventDetailScreen = ({ route, navigation }) => {
 
           {/* Overline: date + time */}
           <Text style={s.dateLine}>
-            {fmtDate}{fmtTime ? ` \u00B7 ${fmtTime}` : ''}
+            {fmtDate}{fmtTime ? ` · ${fmtTime}` : ''}
           </Text>
 
           <View style={s.rule} />
 
-          {/* ── Status banner (guest) ── */}
-          {myRes && (
-            <View style={[s.statusCard, myRes.status === 'confirmed' ? s.statusConfirmed : s.statusPending]}>
-              <Icon
-                name={myRes.status === 'confirmed' ? 'checkmark-circle' : 'time-outline'}
-                size={22}
-                color={myRes.status === 'confirmed' ? colors.success : colors.accent}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[s.statusTitle, { color: myRes.status === 'confirmed' ? colors.success : colors.accent }]}>
-                  {myRes.status === 'confirmed' ? 'Reserva confirmada'
-                    : myRes.status === 'pending_approval' ? 'Solicitud pendiente'
-                    : 'Procesando pago'}
-                </Text>
-                {myRes.confirmation_code && (
-                  <Text style={s.statusSub}>Código: {myRes.confirmation_code}</Text>
-                )}
-                {myRes.status === 'pending_approval' && (
-                  <Text style={s.statusSub}>El anfitrión revisará tu solicitud</Text>
-                )}
+          {/* ── CONFIRMED VIEW ── */}
+          {myRes?.status === 'confirmed' && (
+            <>
+              <View style={[s.statusCard, s.statusConfirmed]}>
+                <Icon name="checkmark-circle" size={22} color={colors.success} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.statusTitle, { color: colors.success }]}>Reserva confirmada</Text>
+                  <Text style={s.statusSub}>Pagaste €{Number(myRes.total_amount || total).toFixed(2)} · Cobro completado</Text>
+                  {myRes.confirmation_code && <Text style={s.statusSub}>Código: {myRes.confirmation_code}</Text>}
+                </View>
               </View>
-            </View>
+
+              {address_line1 && (
+                <View style={s.addressCard}>
+                  <Icon name="location" size={20} color={colors.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.addressText}>{address_line1}</Text>
+                    <Text style={s.addressCity}>{city}</Text>
+                  </View>
+                  <Pressable onPress={() => {
+                    const q = encodeURIComponent(`${address_line1}, ${city}`);
+                    import('react-native').then(({ Linking }) => Linking.openURL(`https://maps.google.com/?q=${q}`));
+                  }}>
+                    <Text style={s.addressLink}>CÓMO LLEGAR</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              <Pressable style={s.chatBtn}
+                onPress={() => navigation.navigate('Chat', { screen: 'ChatMain', params: { openRoomId: chatRoomId, roomName: title, eventId: event.id } })}>
+                <Icon name="chatbubbles-outline" size={18} color={colors.onAccent} />
+                <Text style={s.chatBtnText}>CHAT DEL GRUPO</Text>
+                <Icon name="chevron-forward" size={14} color={colors.onAccent} />
+              </Pressable>
+
+              <View style={s.rule} />
+            </>
           )}
 
-          {/* ── Chat button ── */}
-          {(myRes?.status === 'confirmed' || isOwn) && chatRoomId && (
-            <Pressable
-              style={s.chatBtn}
-              onPress={() => navigation.navigate('Chat', {
-                screen: 'ChatMain',
-                params: { openRoomId: chatRoomId, roomName: title, eventId: event.id },
-              })}
-            >
+          {/* ── PENDING VIEW ── */}
+          {myRes && myRes.status !== 'confirmed' && (
+            <>
+              <View style={[s.statusCard, s.statusPending]}>
+                <Icon name="time-outline" size={22} color={colors.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.statusTitle, { color: colors.accent }]}>
+                    {myRes.status === 'pending_approval' ? 'Solicitud pendiente' : 'Procesando pago'}
+                  </Text>
+                  <Text style={s.statusSub}>
+                    {myRes.status === 'pending_approval' ? 'Pago retenido · El anfitrión revisará tu solicitud' : 'Esperando pago'}
+                  </Text>
+                </View>
+              </View>
+              <View style={s.rule} />
+            </>
+          )}
+
+          {/* ── Quick info (only for non-confirmed or host) ── */}
+          {(!myRes || myRes.status !== 'confirmed') && (
+            <>
+              <View style={s.infoRow}>
+                <InfoItem icon="location-outline" text={city || 'Sin ubicación'} sub={address_line1 || 'Tras confirmar'} />
+                <View style={s.infoSep} />
+                <InfoItem icon="people-outline" text={spots != null ? `${spots} plazas` : `${max_guests || '?'}`} sub={`de ${max_guests || '?'} totales`} />
+                <View style={s.infoSep} />
+                <InfoItem icon="pricetag-outline" text={`€${price.toFixed(0)}`} sub="por persona" />
+              </View>
+              <View style={s.rule} />
+            </>
+          )}
+
+          {/* ── Chat for host ── */}
+          {isOwn && chatRoomId && !myRes && (
+            <Pressable style={s.chatBtn}
+              onPress={() => navigation.navigate('Chat', { screen: 'ChatMain', params: { openRoomId: chatRoomId, roomName: title, eventId: event.id } })}>
               <Icon name="chatbubbles-outline" size={18} color={colors.onAccent} />
               <Text style={s.chatBtnText}>CHAT DEL GRUPO</Text>
               <Icon name="chevron-forward" size={14} color={colors.onAccent} />
             </Pressable>
           )}
-
-          {/* ── Quick info row ── */}
-          <View style={s.infoRow}>
-            <InfoItem icon="location-outline" text={city || 'Sin ubicación'} sub={address_line1 || (myRes?.status === 'confirmed' ? null : 'Tras confirmar')} />
-            <View style={s.infoSep} />
-            <InfoItem icon="people-outline" text={spots != null ? `${spots} plazas` : `${max_guests || '?'}`} sub={`de ${max_guests || '?'} totales`} />
-            <View style={s.infoSep} />
-            <InfoItem icon="pricetag-outline" text={`\u20AC${price.toFixed(0)}`} sub="por persona" />
-          </View>
-
-          <View style={s.rule} />
 
           {/* ── Cuisine tags ── */}
           {cuisineTags.length > 0 && (
@@ -315,7 +346,7 @@ const EventDetailScreen = ({ route, navigation }) => {
           {/* ── Menu ── */}
           {menuCourses && menuCourses.length > 0 && (
             <View style={s.section}>
-              <Text style={s.sectionLabel}>EL MEN\u00DA</Text>
+              <Text style={s.sectionLabel}>EL MEN\Ú</Text>
               {menuCourses.map((c, i) => (
                 <View key={i} style={s.menuItem}>
                   <Text style={s.menuNum}>{String(i + 1).padStart(2, '0')}</Text>
@@ -339,7 +370,7 @@ const EventDetailScreen = ({ route, navigation }) => {
               <Text style={s.hostInitial}>{hostName[0]?.toUpperCase() || '?'}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.hostLabel}>ANFITRI\u00D3N</Text>
+              <Text style={s.hostLabel}>ANFITRI\ÓN</Text>
               <Text style={s.hostName}>{hostName}</Text>
               {host?.profile?.bio ? (
                 <Text style={s.hostBio} numberOfLines={2}>{host.profile.bio}</Text>
@@ -354,7 +385,7 @@ const EventDetailScreen = ({ route, navigation }) => {
               <View style={s.rule} />
               {existingReview || reviewSent ? (
                 <View style={s.section}>
-                  <Text style={s.sectionLabel}>TU RESE\u00D1A</Text>
+                  <Text style={s.sectionLabel}>TU RESE\ÑA</Text>
                   <RatingStars rating={(reviewSent || existingReview).rating} size={18} />
                   {(reviewSent || existingReview).comment ? (
                     <Text style={[s.bodyText, { marginTop: spacing.xs }]}>
@@ -364,9 +395,9 @@ const EventDetailScreen = ({ route, navigation }) => {
                 </View>
               ) : (
                 <View style={s.section}>
-                  <Text style={s.sectionLabel}>DEJA TU RESE\u00D1A</Text>
+                  <Text style={s.sectionLabel}>DEJA TU RESE\ÑA</Text>
                   <Text style={[s.bodyText, { marginBottom: spacing.sm }]}>
-                    {'\u00BF'}C{'\u00F3'}mo fue tu experiencia con {hostName}?
+                    {'\¿'}C{'\ó'}mo fue tu experiencia con {hostName}?
                   </Text>
                   <RatingStars
                     rating={reviewRating}
@@ -394,7 +425,7 @@ const EventDetailScreen = ({ route, navigation }) => {
                     {reviewSubmitting ? (
                       <ActivityIndicator size="small" color={colors.onAccent} />
                     ) : (
-                      <Text style={s.reviewBtnText}>PUBLICAR RESE\u00D1A</Text>
+                      <Text style={s.reviewBtnText}>PUBLICAR RESE\ÑA</Text>
                     )}
                   </Pressable>
                 </View>
@@ -411,7 +442,7 @@ const EventDetailScreen = ({ route, navigation }) => {
       {!isOwn && !myRes && (
         <View style={s.bookingBar}>
           <View style={s.bookingLeft}>
-            <Text style={s.bookingPrice}>{'\u20AC'}{price.toFixed(0)}</Text>
+            <Text style={s.bookingPrice}>{'\€'}{price.toFixed(0)}</Text>
             <Text style={s.bookingPriceSub}>/pers.</Text>
           </View>
 
@@ -436,7 +467,7 @@ const EventDetailScreen = ({ route, navigation }) => {
               <ActivityIndicator size="small" color={colors.onAccent} />
             ) : (
               <Text style={s.reserveBtnText}>
-                {soldOut ? 'LISTA DE ESPERA' : `SOLICITAR \u00B7 \u20AC${total}`}
+                {soldOut ? 'LISTA DE ESPERA' : `SOLICITAR · \€${total}`}
               </Text>
             )}
           </Pressable>
@@ -562,6 +593,15 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(191,71,38,0.08)',
     borderLeftColor: colors.accent,
   },
+  // Address card (confirmed)
+  addressCard: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface, marginBottom: spacing.md,
+  },
+  addressText: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 15 },
+  addressCity: { ...typography.body, color: colors.textMuted, fontSize: 12, marginTop: 1 },
+  addressLink: { ...typography.button, color: colors.accent, fontSize: 9, letterSpacing: 1.2, borderBottomWidth: borders.medium, borderBottomColor: colors.accent, paddingBottom: 1 },
   statusTitle: {
     ...typography.body,
     fontFamily: typography.body.fontFamily,
