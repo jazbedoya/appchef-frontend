@@ -220,7 +220,7 @@ export default function MisCenasScreen({ navigation }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingBottom: spacing.xxxl },
+  scroll: { paddingBottom: spacing.floatingTabTotalH },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.gutter, paddingVertical: spacing.sm,

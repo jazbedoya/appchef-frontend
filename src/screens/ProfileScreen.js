@@ -294,7 +294,7 @@ export default function ProfileScreen({ navigation }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingBottom: spacing.xxxl + spacing.xxl },
+  scroll: { paddingBottom: spacing.floatingTabTotalH },
 
   header: { paddingHorizontal: spacing.gutter, paddingTop: spacing.lg },
   headerTitle: { ...typography.sectionTitle, color: colors.textPrimary, fontSize: 36 },

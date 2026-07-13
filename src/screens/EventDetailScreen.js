@@ -522,7 +522,7 @@ export default EventDetailScreen;
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  scroll: { flexGrow: 1 },
+  scroll: { flexGrow: 1, paddingBottom: spacing.floatingTabTotalH },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, gap: spacing.sm, padding: spacing.xxl },
   emptyText: { ...typography.standfirst, color: colors.textSecondary },
   backBtn: { marginTop: spacing.sm, borderWidth: borders.medium, borderColor: colors.border, paddingVertical: spacing.xs, paddingHorizontal: spacing.lg },

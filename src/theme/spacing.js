@@ -22,4 +22,5 @@ export const spacing = {
   tabBarBottom: 28, // reserva inferior del tab bar (safe-area aprox.)
   floatingTabInset: 18,
   floatingTabBottom: 26,
+  floatingTabTotalH: 102, // 56 bar + 26 bottom + 20 margin — use as paddingBottom on all screens
 };

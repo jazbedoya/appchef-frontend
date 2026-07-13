@@ -316,7 +316,7 @@ const st = StyleSheet.create({
   },
   listHeaderTitle: { ...typography.dinnerTitle, fontSize: 20, color: colors.textPrimary },
   listHeaderCount: { ...typography.label, color: colors.textMuted, letterSpacing: 1 },
-  listContent: { paddingBottom: spacing.tabBarBottom },
+  listContent: { paddingBottom: spacing.floatingTabTotalH },
 
   listRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,

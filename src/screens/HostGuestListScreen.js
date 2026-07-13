@@ -212,7 +212,7 @@ export default function HostGuestListScreen({ route, navigation }) {
 
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingBottom: 120 },
+  scroll: { paddingBottom: spacing.floatingTabTotalH },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.gutter, paddingVertical: spacing.sm,

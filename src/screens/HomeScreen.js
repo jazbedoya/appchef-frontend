@@ -291,7 +291,7 @@ export default HomeScreen;
 
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { flexGrow: 1, paddingBottom: 120 },
+  scroll: { flexGrow: 1, paddingBottom: spacing.floatingTabTotalH },
 
   // Search
   searchWrap: {

@@ -5,6 +5,7 @@ import { createNativeStackNavigator as createStackNavigator } from '@react-navig
 import { useSelector } from 'react-redux';
 import { Ionicons as Icon } from '@expo/vector-icons';
 
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { selectIsAuthenticated, selectIsInitializing } from '../store/authSlice';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
@@ -236,7 +237,10 @@ const MainTabNavigator = () => (
       })}
     />
     <Tab.Screen name="Chat" component={ChatStack}
-      options={{ tabBarIcon: ({ focused }) => <Icon name={focused ? 'chatbubble' : 'chatbubble-outline'} size={sizes.tabFloatingIcon} color={focused ? colors.accent : colors.onTabFloating} /> }}
+      options={{
+        tabBarIcon: ({ focused }) => <Icon name={focused ? 'chatbubble' : 'chatbubble-outline'} size={sizes.tabFloatingIcon} color={focused ? colors.accent : colors.onTabFloating} />,
+        tabBarStyle: { display: 'none' },
+      }}
     />
     <Tab.Screen name="Profile" component={ProfileStack}
       options={{ tabBarIcon: ({ focused }) => <Icon name={focused ? 'person' : 'person-outline'} size={sizes.tabFloatingIcon} color={focused ? colors.accent : colors.onTabFloating} /> }}

@@ -258,7 +258,7 @@ export default function ChefProfileScreen({ route, navigation }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingBottom: 120 },
+  scroll: { paddingBottom: spacing.floatingTabTotalH },
 
   backBtn: {
     width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
