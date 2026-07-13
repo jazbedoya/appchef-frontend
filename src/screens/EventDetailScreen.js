@@ -213,15 +213,13 @@ const EventDetailScreen = ({ route, navigation }) => {
       <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
 
         {/* ── Hero ── */}
-        <View style={s.hero}>
+        <View style={[s.hero, myRes?.status === 'confirmed' && s.heroCompact]}>
           {Platform.OS === 'web' ? (
-            <div style={{ width: '100%', height: HERO_H, backgroundImage: `url(${heroImage(event)})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+            <div style={{ width: '100%', height: myRes?.status === 'confirmed' ? 120 : HERO_H, backgroundImage: `url(${heroImage(event)})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
           ) : (
-            <Image source={{ uri: heroImage(event) }} style={s.heroImg} resizeMode="cover" />
+            <Image source={{ uri: heroImage(event) }} style={[s.heroImg, myRes?.status === 'confirmed' && s.heroImgCompact]} resizeMode="cover" />
           )}
-          {/* Scrim overlay */}
           <View style={s.heroScrim} />
-          {/* Overline on hero */}
           <View style={s.heroOverlay}>
             <Text style={s.heroOverline}>
               {cuisineTags[0] || ''}{city ? ` · ${city}` : ''}
@@ -533,6 +531,8 @@ const s = StyleSheet.create({
   // Hero
   hero: { height: HERO_H, position: 'relative' },
   heroImg: { width: '100%', height: HERO_H },
+  heroCompact: { height: 120 },
+  heroImgCompact: { height: 120 },
   heroScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(26,22,19,0.35)',
