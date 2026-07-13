@@ -113,7 +113,7 @@ export default function MisCenasScreen({ navigation }) {
     const img = ev.cover_image_url || DEFAULT_IMG;
     return (
       <Pressable key={ev.id} style={s.card}
-        onPress={() => navigation.navigate('Inicio', { screen: 'EventDetail', params: { eventId: ev.id } })}>
+        onPress={() => navigation.navigate('HostGuestList', { eventId: ev.id, eventTitle: ev.title })}>
         <Image source={{ uri: img }} style={s.cardImg} />
         <View style={s.cardBody}>
           <Text style={[s.cardTitle, isPast && { color: colors.textMuted }]} numberOfLines={1}>{ev.title}</Text>

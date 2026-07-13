@@ -25,6 +25,7 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import MisCenasScreen from '../screens/MisCenasScreen';
 import FollowListScreen from '../screens/FollowListScreen';
 import StripeOnboardingScreen from '../screens/StripeOnboardingScreen';
+import HostGuestListScreen from '../screens/HostGuestListScreen';
 import { hapticSelection } from '../lib/haptics';
 
 const Tab = createBottomTabNavigator();
@@ -54,6 +55,11 @@ function HomeStackScreen() {
       <HomeStackNav.Screen
         name="ChefProfile"
         component={ChefProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <HomeStackNav.Screen
+        name="HostGuestList"
+        component={HostGuestListScreen}
         options={{ headerShown: false }}
       />
       <HomeStackNav.Screen
