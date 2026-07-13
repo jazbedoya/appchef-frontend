@@ -1,12 +1,12 @@
-// ChefProfileScreen.js — Perfil público con bloque de confianza, rating y reseñas
+// ChefProfileScreen.js — Perfil público con confianza, cenas del chef, reseñas
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, Alert, Image,
+  View, Text, ScrollView, Pressable, Image, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-import { userApi } from '../services/api';
+import { userApi, reservationApi } from '../services/api';
 import eventsService from '../services/eventsService';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
@@ -14,6 +14,8 @@ import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
 import RatingStars from '../components/RatingStars';
+import { SkeletonProfile, SkeletonList } from '../components/Skeleton';
+import { hapticSuccess } from '../lib/haptics';
 
 export default function ChefProfileScreen({ route, navigation }) {
   const { userId, userName } = route.params;
@@ -23,15 +25,14 @@ export default function ChefProfileScreen({ route, navigation }) {
   const [followLoading, setFollowLoading] = useState(false);
   const [reviews, setReviews] = useState([]);
   const [reviewMeta, setReviewMeta] = useState({ total: 0, average_rating: null });
+  const [chefEvents, setChefEvents] = useState([]);
 
   const loadProfile = useCallback(async () => {
     try {
       const res = await userApi.get(`/users/${userId}`);
       setProfile(res.data);
       setFollowing(res.data.is_following === true);
-    } catch {
-      Alert.alert('Error', 'No se pudo cargar el perfil');
-    }
+    } catch { Alert.alert('Error', 'No se pudo cargar el perfil'); }
     setLoading(false);
   }, [userId]);
 
@@ -43,10 +44,17 @@ export default function ChefProfileScreen({ route, navigation }) {
     } catch {}
   }, [userId]);
 
-  useEffect(() => { loadProfile(); loadReviews(); }, [loadProfile, loadReviews]);
+  const loadChefEvents = useCallback(async () => {
+    try {
+      const res = await reservationApi.get('/events', { params: { per_page: 20 } });
+      const events = (res.data.events || []).filter(e => e.host_id === userId);
+      setChefEvents(events);
+    } catch {}
+  }, [userId]);
+
+  useEffect(() => { loadProfile(); loadReviews(); loadChefEvents(); }, [loadProfile, loadReviews, loadChefEvents]);
 
   const toggleFollow = async () => {
-    const { hapticSuccess } = require('../lib/haptics');
     hapticSuccess();
     const was = following;
     setFollowing(!was);
@@ -64,29 +72,27 @@ export default function ChefProfileScreen({ route, navigation }) {
   if (loading) {
     return (
       <SafeAreaView style={s.safe} edges={['top']}>
-        <View style={s.center}><ActivityIndicator color={colors.accent} /></View>
+        <Pressable style={s.backBtn} onPress={() => navigation.goBack()} hitSlop={12}>
+          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
+        </Pressable>
+        <SkeletonProfile />
+        <SkeletonList count={3} />
       </SafeAreaView>
     );
   }
 
   const p = profile?.profile;
-  const initials = (userName || profile?.username || '?')[0].toUpperCase();
-  const displayName = p?.first_name
-    ? `${p.first_name} ${p.last_name || ''}`.trim()
-    : profile?.username || userName || '';
-
-  const memberSince = profile?.created_at
-    ? new Date(profile.created_at).getFullYear()
-    : null;
-
+  const displayName = p?.first_name ? `${p.first_name} ${p.last_name || ''}`.trim() : profile?.username || userName || '';
+  const initials = (displayName || '?')[0].toUpperCase();
+  const memberSince = profile?.created_at ? new Date(profile.created_at).getFullYear() : null;
+  const stripeVerified = p?.stripe_verified === true;
   const emailVerified = profile?.email_verified === true;
-  const phoneVerified = profile?.phone_verified === true;
-  const profileVerified = emailVerified && phoneVerified;
+  const futureEvents = chefEvents.filter(e => new Date(e.event_date) > new Date());
+  const pastEventCount = chefEvents.filter(e => new Date(e.event_date) <= new Date()).length;
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
-        {/* Back */}
         <Pressable style={s.backBtn} onPress={() => navigation.goBack()} hitSlop={12}>
           <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
         </Pressable>
@@ -96,43 +102,35 @@ export default function ChefProfileScreen({ route, navigation }) {
           {p?.avatar_url ? (
             <Image source={{ uri: p.avatar_url }} style={s.avatarImg} />
           ) : (
-            <View style={s.avatar}>
-              <Text style={s.avatarText}>{initials}</Text>
-            </View>
+            <View style={s.avatar}><Text style={s.avatarText}>{initials}</Text></View>
           )}
           <Text style={s.name}>{displayName}</Text>
-          {p?.is_host && <Text style={s.hostBadge}>ANFITRIÓN</Text>}
-          {p?.city && (
-            <Text style={s.city}>{p.city}{p.country ? `, ${p.country}` : ''}</Text>
-          )}
-          {memberSince && (
-            <Text style={s.memberSince}>Miembro desde {memberSince}</Text>
-          )}
+          {p?.city && <Text style={s.city}>{p.city}{p.country ? `, ${p.country}` : ''}</Text>}
         </View>
 
         {/* ── Badges de confianza ── */}
         <View style={s.badgesRow}>
+          {stripeVerified && (
+            <View style={[s.badge, s.badgeVerified]}>
+              <Ionicons name="shield-checkmark" size={14} color={colors.onAccent} />
+              <Text style={s.badgeVerifiedText}>Anfitrión verificado</Text>
+            </View>
+          )}
           {emailVerified && (
             <View style={s.badge}>
-              <Ionicons name="mail" size={13} color={colors.success} />
+              <Ionicons name="mail" size={12} color={colors.success} />
               <Text style={s.badgeText}>Email verificado</Text>
             </View>
           )}
-          {phoneVerified && (
+          {memberSince && (
             <View style={s.badge}>
-              <Ionicons name="call" size={13} color={colors.success} />
-              <Text style={s.badgeText}>Teléfono verificado</Text>
-            </View>
-          )}
-          {profileVerified && (
-            <View style={[s.badge, s.badgeAccent]}>
-              <Ionicons name="shield-checkmark" size={13} color={colors.accent} />
-              <Text style={[s.badgeText, { color: colors.accent }]}>Perfil verificado</Text>
+              <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
+              <Text style={[s.badgeText, { color: colors.textMuted }]}>Desde {memberSince}</Text>
             </View>
           )}
         </View>
 
-        {/* ── Rating inline ── */}
+        {/* ── Rating ── */}
         {reviewMeta.average_rating && (
           <View style={s.ratingRow}>
             <RatingStars rating={reviewMeta.average_rating} size={18} />
@@ -143,17 +141,11 @@ export default function ChefProfileScreen({ route, navigation }) {
         )}
 
         {/* ── Follow ── */}
-        <Pressable
-          style={[s.followBtn, following && s.followBtnActive]}
-          onPress={toggleFollow}
-          disabled={followLoading}
-        >
+        <Pressable style={[s.followBtn, following && s.followBtnActive]} onPress={toggleFollow} disabled={followLoading}>
           {followLoading ? (
             <ActivityIndicator color={following ? colors.textPrimary : colors.onAccent} size="small" />
           ) : (
-            <Text style={[s.followBtnText, following && s.followBtnTextActive]}>
-              {following ? 'SIGUIENDO' : 'SEGUIR'}
-            </Text>
+            <Text style={[s.followBtnText, following && s.followBtnTextActive]}>{following ? 'SIGUIENDO' : 'SEGUIR'}</Text>
           )}
         </Pressable>
 
@@ -161,16 +153,22 @@ export default function ChefProfileScreen({ route, navigation }) {
 
         {/* ── Stats ── */}
         <View style={s.statsRow}>
-          <StatItem num={profile?.followers_count ?? 0} label="SEGUIDORES" onPress={() => navigation.navigate('FollowList', { userId, mode: 'followers' })} />
+          <Pressable style={s.stat} onPress={() => navigation.navigate('FollowList', { userId, mode: 'followers' })}>
+            <Text style={s.statNum}>{profile?.followers_count ?? 0}</Text>
+            <Text style={s.statLabel}>SEGUIDORES</Text>
+          </Pressable>
           <View style={s.statSep} />
-          <StatItem num={profile?.following_count ?? 0} label="SIGUIENDO" onPress={() => navigation.navigate('FollowList', { userId, mode: 'following' })} />
-          {(p?.total_dinners_hosted > 0 || p?.total_dinners_attended > 0) && (
+          <Pressable style={s.stat} onPress={() => navigation.navigate('FollowList', { userId, mode: 'following' })}>
+            <Text style={s.statNum}>{profile?.following_count ?? 0}</Text>
+            <Text style={s.statLabel}>SIGUIENDO</Text>
+          </Pressable>
+          {(chefEvents.length > 0 || p?.total_dinners_hosted > 0) && (
             <>
               <View style={s.statSep} />
-              <StatItem
-                num={p?.total_dinners_hosted || p?.total_dinners_attended || 0}
-                label={p?.is_host ? 'CENAS' : 'ASISTIDAS'}
-              />
+              <View style={s.stat}>
+                <Text style={s.statNum}>{chefEvents.length || p?.total_dinners_hosted || 0}</Text>
+                <Text style={s.statLabel}>CENAS</Text>
+              </View>
             </>
           )}
         </View>
@@ -186,22 +184,58 @@ export default function ChefProfileScreen({ route, navigation }) {
           </>
         ) : null}
 
+        {/* ── Próximas cenas del chef ── */}
+        {futureEvents.length > 0 && (
+          <>
+            <Text style={s.sectionLabel}>PRÓXIMAS CENAS</Text>
+            {futureEvents.map((ev) => (
+              <Pressable key={ev.id} style={({ pressed }) => [s.eventCard, pressed && { opacity: 0.7 }]}
+                onPress={() => navigation.navigate('EventDetail', { eventId: ev.id })}>
+                {ev.cover_image_url ? (
+                  <Image source={{ uri: ev.cover_image_url }} style={s.eventImg} />
+                ) : (
+                  <View style={[s.eventImg, { backgroundColor: colors.imagePlaceholder }]} />
+                )}
+                <View style={s.eventBody}>
+                  <Text style={s.eventTitle} numberOfLines={1}>{ev.title}</Text>
+                  <Text style={s.eventMeta}>
+                    {ev.city} · {ev.confirmed_guests}/{ev.max_guests} plazas · €{Number(ev.price_per_person).toFixed(0)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+              </Pressable>
+            ))}
+            {pastEventCount > 0 && (
+              <Text style={s.pastCount}>{pastEventCount} cena{pastEventCount !== 1 ? 's' : ''} anteriore{pastEventCount !== 1 ? 's' : ''}</Text>
+            )}
+            <View style={s.rule} />
+          </>
+        )}
+
+        {p?.is_host && futureEvents.length === 0 && (
+          <>
+            <Text style={s.sectionLabel}>CENAS</Text>
+            <Text style={s.emptyText}>No tiene cenas publicadas en este momento.</Text>
+            <View style={s.rule} />
+          </>
+        )}
+
         {/* ── Reseñas ── */}
         <Text style={s.sectionLabel}>RESEÑAS</Text>
         {reviews.length > 0 ? (
           reviews.map((rev) => (
             <View key={rev.id} style={s.reviewCard}>
               <View style={s.reviewHeader}>
-                <View style={s.reviewAvatar}>
-                  <Text style={s.reviewAvatarText}>
-                    {(rev.reviewer.first_name || rev.reviewer.username || '?')[0].toUpperCase()}
-                  </Text>
-                </View>
+                {rev.reviewer.avatar_url ? (
+                  <Image source={{ uri: rev.reviewer.avatar_url }} style={s.reviewAvatarImg} />
+                ) : (
+                  <View style={s.reviewAvatar}>
+                    <Text style={s.reviewAvatarText}>{(rev.reviewer.first_name || rev.reviewer.username || '?')[0].toUpperCase()}</Text>
+                  </View>
+                )}
                 <View style={{ flex: 1 }}>
                   <Text style={s.reviewName}>
-                    {rev.reviewer.first_name
-                      ? `${rev.reviewer.first_name} ${rev.reviewer.last_name || ''}`.trim()
-                      : rev.reviewer.username}
+                    {rev.reviewer.first_name ? `${rev.reviewer.first_name} ${rev.reviewer.last_name || ''}`.trim() : rev.reviewer.username}
                   </Text>
                   <RatingStars rating={rev.rating} size={12} />
                 </View>
@@ -213,7 +247,7 @@ export default function ChefProfileScreen({ route, navigation }) {
             </View>
           ))
         ) : (
-          <Text style={s.emptyReviews}>
+          <Text style={s.emptyText}>
             Aún no tiene reseñas.{'\n'}¡Sé el primero en cenar con {displayName.split(' ')[0]}!
           </Text>
         )}
@@ -222,123 +256,84 @@ export default function ChefProfileScreen({ route, navigation }) {
   );
 }
 
-const StatItem = ({ num, label, onPress }) => {
-  const Wrap = onPress ? Pressable : View;
-  return (
-    <Wrap style={s.stat} onPress={onPress}>
-      <Text style={s.statNum}>{num}</Text>
-      <Text style={s.statLabel}>{label}</Text>
-    </Wrap>
-  );
-};
-
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingBottom: spacing.xxxl + spacing.xxl },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scroll: { paddingBottom: 120 },
 
   backBtn: {
-    width: 36, height: 36,
-    alignItems: 'center', justifyContent: 'center',
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
     borderWidth: borders.hairline, borderColor: colors.borderHairline, borderRadius: radius.pill,
     marginLeft: spacing.gutter, marginTop: spacing.sm,
   },
 
-  // Hero
   heroSection: { alignItems: 'center', paddingTop: spacing.lg, paddingBottom: spacing.sm },
   avatar: {
     width: 72, height: 72, borderRadius: radius.pill,
     backgroundColor: colors.textPrimary, alignItems: 'center', justifyContent: 'center',
-    marginBottom: spacing.sm,
   },
-  avatarImg: {
-    width: 72, height: 72, borderRadius: radius.pill, marginBottom: spacing.sm,
-  },
-  avatarText: { ...typography.sectionTitleSm, color: colors.onAccent },
-  name: { ...typography.sectionTitleSm, color: colors.textPrimary, textAlign: 'center' },
-  hostBadge: { ...typography.label, color: colors.accent, marginTop: spacing.xxs, letterSpacing: 2, fontSize: 9 },
+  avatarImg: { width: 72, height: 72, borderRadius: radius.pill },
+  avatarText: { ...typography.coverTitle, color: colors.onAccent, fontSize: 28 },
+  name: { ...typography.coverTitle, color: colors.textPrimary, fontSize: 26, marginTop: spacing.sm, textAlign: 'center' },
   city: { ...typography.body, color: colors.textMuted, marginTop: spacing.xxs },
-  memberSince: { ...typography.price, color: colors.textMuted, marginTop: spacing.xxs },
 
   // Badges
-  badgesRow: {
-    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
-    gap: spacing.xs, paddingHorizontal: spacing.gutter, marginTop: spacing.sm,
-  },
+  badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, justifyContent: 'center', paddingHorizontal: spacing.gutter, marginTop: spacing.sm },
   badge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingVertical: spacing.xxs, paddingHorizontal: spacing.xs,
     borderWidth: borders.hairline, borderColor: colors.borderHairline,
   },
-  badgeAccent: {
-    borderColor: colors.accent, backgroundColor: 'rgba(191,71,38,0.06)',
-  },
-  badgeText: {
-    ...typography.price, color: colors.success, fontSize: 10,
-  },
+  badgeText: { ...typography.price, color: colors.success, fontSize: 10 },
+  badgeVerified: { backgroundColor: colors.accent, borderColor: colors.accent },
+  badgeVerifiedText: { ...typography.button, color: colors.onAccent, fontSize: 9, letterSpacing: 1 },
 
   // Rating
-  ratingRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: spacing.xs, marginTop: spacing.md,
-  },
-  ratingText: {
-    ...typography.price, color: colors.textMuted, fontSize: 12,
-  },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, justifyContent: 'center', marginTop: spacing.sm },
+  ratingText: { ...typography.price, color: colors.textMuted, fontSize: 13 },
 
   // Follow
   followBtn: {
     alignSelf: 'center', marginTop: spacing.md,
-    backgroundColor: colors.accent,
-    paddingVertical: spacing.xs + 2, paddingHorizontal: spacing.xxl,
+    backgroundColor: colors.accent, paddingVertical: spacing.xs + 2, paddingHorizontal: spacing.xxl,
+    borderRadius: radius.xs,
   },
-  followBtnActive: {
-    backgroundColor: 'transparent',
-    borderWidth: borders.medium, borderColor: colors.border,
-  },
+  followBtnActive: { backgroundColor: 'transparent', borderWidth: borders.medium, borderColor: colors.border },
   followBtnText: { ...typography.button, color: colors.onAccent, letterSpacing: 1.5 },
   followBtnTextActive: { color: colors.textPrimary },
 
-  rule: {
-    height: borders.hairline, backgroundColor: colors.borderHairline,
-    marginHorizontal: spacing.gutter, marginVertical: spacing.md,
-  },
+  rule: { height: borders.hairline, backgroundColor: colors.borderHairline, marginHorizontal: spacing.gutter, marginVertical: spacing.md },
 
   // Stats
   statsRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.gutter },
   stat: { flex: 1, alignItems: 'center' },
-  statNum: { ...typography.numeral, color: colors.textPrimary, fontSize: 24 },
+  statNum: { ...typography.numeral, color: colors.textPrimary, fontSize: 22 },
   statLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 2, fontSize: 8, marginTop: 2 },
-  statSep: { width: borders.hairline, height: 28, backgroundColor: colors.borderHairline },
+  statSep: { width: borders.hairline, height: 24, backgroundColor: colors.borderHairline },
 
   // Sections
-  sectionLabel: {
-    ...typography.label, color: colors.textMuted, letterSpacing: 2.5,
-    paddingHorizontal: spacing.gutter, marginBottom: spacing.xs,
-  },
-  bio: { ...typography.standfirst, color: colors.textSecondary, paddingHorizontal: spacing.gutter },
+  sectionLabel: { ...typography.label, color: colors.textMuted, letterSpacing: 2.5, paddingHorizontal: spacing.gutter, marginBottom: spacing.xs },
+  bio: { ...typography.standfirst, color: colors.textSecondary, paddingHorizontal: spacing.gutter, lineHeight: 22 },
+  emptyText: { ...typography.body, color: colors.textMuted, paddingHorizontal: spacing.gutter, lineHeight: 20 },
 
-  // Reviews
-  reviewCard: {
-    marginHorizontal: spacing.gutter, marginBottom: spacing.sm,
-    paddingBottom: spacing.sm,
+  // Chef events
+  eventCard: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.gutter, paddingVertical: spacing.sm,
     borderBottomWidth: borders.hairline, borderBottomColor: colors.borderHairline,
   },
+  eventImg: { width: 50, height: 50, borderRadius: radius.xs },
+  eventBody: { flex: 1 },
+  eventTitle: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 15 },
+  eventMeta: { ...typography.price, color: colors.textMuted, fontSize: 11, marginTop: 2 },
+  pastCount: { ...typography.price, color: colors.textMuted, fontSize: 11, paddingHorizontal: spacing.gutter, marginTop: spacing.xs },
+
+  // Reviews
+  reviewCard: { marginHorizontal: spacing.gutter, marginBottom: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: borders.hairline, borderBottomColor: colors.borderHairline },
   reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  reviewAvatar: {
-    width: 32, height: 32, borderRadius: radius.pill,
-    backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center',
-  },
+  reviewAvatar: { width: 32, height: 32, borderRadius: radius.pill, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  reviewAvatarImg: { width: 32, height: 32, borderRadius: radius.pill },
   reviewAvatarText: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 13 },
   reviewName: { ...typography.body, fontWeight: '600', color: colors.textPrimary, fontSize: 13, marginBottom: 2 },
   reviewDate: { ...typography.price, color: colors.textMuted, fontSize: 10 },
-  reviewComment: {
-    ...typography.body, color: colors.textSecondary, marginTop: spacing.xs,
-    marginLeft: 32 + spacing.xs, lineHeight: 20,
-  },
-  emptyReviews: {
-    ...typography.standfirst, color: colors.textMuted, textAlign: 'center',
-    paddingHorizontal: spacing.gutter, paddingVertical: spacing.lg,
-    fontSize: 14,
-  },
+  reviewComment: { ...typography.body, color: colors.textSecondary, marginTop: spacing.xs, marginLeft: 32 + spacing.xs, lineHeight: 20 },
 });
