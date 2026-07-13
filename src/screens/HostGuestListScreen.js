@@ -129,10 +129,13 @@ export default function HostGuestListScreen({ route, navigation }) {
           <Text style={[st.summaryNum, { color: colors.accent }]}>{data?.pending_count || 0}</Text>
           <Text style={st.summaryLabel}>PENDIENTES</Text>
         </View>
-        <View style={st.summaryItem}>
-          <Text style={st.summaryNum}>€{data?.total_revenue || '0'}</Text>
-          <Text style={st.summaryLabel}>INGRESOS</Text>
-        </View>
+        <Pressable style={st.summaryItem} onPress={() => Alert.alert(
+          'Tus ingresos',
+          `Confirmado: €${data?.chef_revenue || '0'}\nPotencial si se llena: €${data?.chef_potential || '0'}\n\nEl comensal paga un total mayor (€${data?.total_with_fees || '0'} confirmado); la diferencia son los gastos de servicio de App Chef. Tú recibes tu precio íntegro.`
+        )}>
+          <Text style={[st.summaryNum, { color: colors.success }]}>€{data?.chef_revenue || '0'}</Text>
+          <Text style={st.summaryLabel}>TUS INGRESOS</Text>
+        </Pressable>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll}
