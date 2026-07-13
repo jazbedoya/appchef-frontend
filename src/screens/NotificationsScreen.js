@@ -35,8 +35,10 @@ function formatMessage(notif) {
       if (p.is_guest_confirmation) return `Tu solicitud para "${title}" est\u00E1 en revisi\u00F3n. El pago se completar\u00E1 cuando el chef acepte.`;
       return `${name} solicit\u00F3 unirse a tu cena "${title}"${p.party_size > 1 ? ` (${p.party_size} plazas)` : ''}`;
     case 'RESERVATION_ACCEPTED':
+      if (p.is_chef_confirmation) return `Aceptaste a un comensal en "${title}". Confirmado y cobro completado.`;
       return `${name} acept\u00F3 tu plaza en "${title}". Se ha completado el cobro. Ya puedes unirte al chat.`;
     case 'RESERVATION_REJECTED': {
+      if (p.is_chef_confirmation) return `Rechazaste una solicitud para "${title}". No se le ha cobrado nada.`;
       const reason = p.reason ? ` Motivo: ${p.reason}.` : '';
       const note = p.note ? ` "${p.note}"` : '';
       return `Tu solicitud para "${title}" no fue aceptada.${reason}${note} No se te ha cobrado nada.`;
@@ -177,9 +179,10 @@ const NotificationsScreen = ({ navigation }) => {
     const p = item.payload || {};
     const isChefRequest = item.type === 'RESERVATION_REQUEST' && !p.is_guest_confirmation && p.reservation_id;
     const status = resolved[item.id];
+    const alreadyProcessed = isChefRequest && item.read && !status;
 
-    // Actionable card for chef
-    if (isChefRequest && !status) {
+    // Actionable card for chef (only if not yet processed)
+    if (isChefRequest && !status && !item.read) {
       const initial = (p.actor_name || '?')[0].toUpperCase();
       return (
         <View style={[st.row, st.rowUnread, { flexDirection: 'column', alignItems: 'stretch' }]}>
@@ -213,16 +216,17 @@ const NotificationsScreen = ({ navigation }) => {
       );
     }
 
-    // Resolved request
-    if (isChefRequest && status) {
+    // Resolved request (this session or previously processed)
+    if ((isChefRequest && status) || alreadyProcessed) {
+      const label = status === 'rejected' ? 'Rechazada' : 'Resuelta';
       return (
         <View style={st.row}>
           <View style={st.iconWrap}>
-            <Ionicons name={status === 'approved' ? 'checkmark-circle' : 'close-circle'} size={20} color={status === 'approved' ? colors.success : colors.textMuted} />
+            <Ionicons name="checkmark-circle" size={20} color={colors.success} />
           </View>
           <View style={st.body}>
-            <Text style={st.message}>{p.actor_name || 'Solicitud'} — {status === 'approved' ? 'Aprobada' : 'Rechazada'}</Text>
-            <Text style={st.time}>{p.event_title}</Text>
+            <Text style={st.message}>{p.actor_name || 'Solicitud'} — {label}</Text>
+            <Text style={st.time}>{p.event_title} · {timeAgo(item.created_at)}</Text>
           </View>
         </View>
       );
