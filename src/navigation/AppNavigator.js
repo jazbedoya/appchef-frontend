@@ -44,14 +44,7 @@ function HomeStackScreen() {
       <HomeStackNav.Screen
         name="EventDetail"
         component={EventDetailScreen}
-        options={{
-          headerShown: true,
-          title: 'Detalle',
-          headerStyle: { backgroundColor: colors.cafe },
-          headerTintColor: colors.beige,
-          headerTitleStyle: { color: colors.beige, fontWeight: '700' },
-          headerShadowVisible: false,
-        }}
+        options={{ headerShown: false }}
       />
       <HomeStackNav.Screen
         name="ChefProfile"
@@ -94,7 +87,17 @@ const MapStack = () => (
     <Stack.Screen
       name="EventDetailFromMap"
       component={EventDetailScreen}
-      options={{ headerTransparent: true, headerTintColor: colors.white }}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="EventDetail"
+      component={EventDetailScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="HostGuestList"
+      component={HostGuestListScreen}
+      options={{ headerShown: false }}
     />
     <Stack.Screen
       name="ChefProfile"
@@ -128,6 +131,16 @@ const ProfileStack = () => (
       options={{ headerShown: false }}
     />
     <Stack.Screen
+      name="EventDetail"
+      component={EventDetailScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="HostGuestList"
+      component={HostGuestListScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
       name="FollowList"
       component={FollowListScreen}
       options={{ headerShown: false }}
@@ -151,6 +164,16 @@ const ChatStack = () => (
     <Stack.Screen
       name="ChatMain"
       component={ChatScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="EventDetail"
+      component={EventDetailScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="HostGuestList"
+      component={HostGuestListScreen}
       options={{ headerShown: false }}
     />
     <Stack.Screen
@@ -239,7 +262,6 @@ const MainTabNavigator = () => (
     <Tab.Screen name="Chat" component={ChatStack}
       options={{
         tabBarIcon: ({ focused }) => <Icon name={focused ? 'chatbubble' : 'chatbubble-outline'} size={sizes.tabFloatingIcon} color={focused ? colors.accent : colors.onTabFloating} />,
-        tabBarStyle: { display: 'none' },
       }}
     />
     <Tab.Screen name="Profile" component={ProfileStack}

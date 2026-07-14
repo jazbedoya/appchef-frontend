@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/core';
 import {
   View, Text, FlatList, TextInput, Pressable, StyleSheet, ScrollView, RefreshControl,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Alert, StatusBar,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Alert, StatusBar, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
@@ -21,25 +21,50 @@ import { chatApi, userApi, reservationApi, CHAT_SERVICE_URL } from '../services/
 
 const WS_BASE = CHAT_SERVICE_URL.replace('http', 'ws');
 
-const ROOM_EMOJIS = {
-  italiana: '\uD83C\uDF5D', japonesa: '\uD83C\uDF63', vegana: '\uD83E\uDD57',
-  española: '\uD83E\uDD58', tapas: '\uD83E\uDD58', peruana: '\uD83C\uDF79',
-  mediterr: '\uD83E\uDED2', default: '\uD83C\uDF7D\uFE0F',
+// ─── Fallback images ───
+const FALLBACK_IMAGES = [
+  'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&q=80',
+  'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&q=80',
+  'https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=400&q=80',
+  'https://images.unsplash.com/photo-1543353071-873f17a7a088?w=400&q=80',
+  'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=400&q=80',
+  'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&q=80',
+  'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=400&q=80',
+];
+const getFallbackImage = (title) => {
+  if (!title) return FALLBACK_IMAGES[0];
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) hash = ((hash << 5) - hash + title.charCodeAt(i)) | 0;
+  return FALLBACK_IMAGES[Math.abs(hash) % FALLBACK_IMAGES.length];
 };
-const getEmoji = (name) => {
-  if (!name) return ROOM_EMOJIS.default;
-  const l = name.toLowerCase();
-  const k = Object.keys(ROOM_EMOJIS).find((k) => l.includes(k));
-  return k ? ROOM_EMOJIS[k] : ROOM_EMOJIS.default;
-};
+
 const timeAgo = (iso) => {
   if (!iso) return '';
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'ahora';
   if (mins < 60) return `${mins} min`;
   const h = Math.floor(mins / 60);
   if (h < 24) return `${h} h`;
   return `${Math.floor(h / 24)} d`;
 };
+
+const formatEventDate = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const days = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} · ${hh}:${mm}`;
+};
+
+// Sort rooms by last activity within each group
+const sortByActivity = (list) =>
+  [...list].sort((a, b) => {
+    const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+    const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+    return bTime - aTime; // most recent first
+  });
 
 export default function ChatScreen({ route, navigation }) {
   const user = useSelector(selectUser);
@@ -52,27 +77,106 @@ export default function ChatScreen({ route, navigation }) {
   const [members, setMembers] = useState([]);
   const [memberProfiles, setMemberProfiles] = useState({});
   const [followLoading, setFollowLoading] = useState(null);
+  const [unreadCounts, setUnreadCounts] = useState({}); // { room_id: count }
   const wsRef = useRef(null);
   const flatRef = useRef(null);
+  const pollRef = useRef(null);
 
   const openRoomId = route?.params?.openRoomId;
   const roomName = route?.params?.roomName;
 
+  // Hide/show tab bar based on whether a room is open
+  useEffect(() => {
+    const parent = navigation.getParent();
+    if (!parent) return;
+    if (openRoom) {
+      parent.setOptions({ tabBarStyle: { display: 'none' } });
+    } else {
+      parent.setOptions({
+        tabBarStyle: {
+          position: 'absolute',
+          bottom: spacing.floatingTabBottom,
+          left: spacing.floatingTabInset,
+          right: spacing.floatingTabInset,
+          height: 56,
+          borderRadius: radius.pill,
+          backgroundColor: colors.tabFloating,
+          borderTopWidth: 0,
+          paddingBottom: 0,
+          paddingTop: 0,
+          shadowColor: colors.textPrimary,
+          shadowOffset: { width: 0, height: 16 },
+          shadowOpacity: 0.4,
+          shadowRadius: 24,
+          elevation: 12,
+        },
+      });
+    }
+  }, [openRoom, navigation]);
+
+  // ─── Unread counts polling ───
+  const fetchUnreadCounts = useCallback(async () => {
+    try {
+      const res = await chatApi.get('/rooms/unread-counts');
+      setUnreadCounts(res.data.counts || {});
+      // Update tab badge
+      const total = res.data.total || 0;
+      navigation.getParent()?.setOptions({
+        tabBarBadge: total > 0 ? total : undefined,
+        tabBarBadgeStyle: total > 0 ? {
+          backgroundColor: colors.accent,
+          color: colors.onAccent,
+          fontSize: 10,
+          fontWeight: '700',
+          minWidth: 18,
+          height: 18,
+          borderRadius: 9,
+        } : undefined,
+      });
+    } catch {}
+  }, [navigation]);
+
+  useFocusEffect(useCallback(() => {
+    fetchUnreadCounts();
+    // Poll every 15s while on this tab
+    pollRef.current = setInterval(fetchUnreadCounts, 15000);
+    return () => { clearInterval(pollRef.current); };
+  }, [fetchUnreadCounts]));
+
   // ─── Load rooms (derived from confirmed reservations + hosting) ───
   const loadRooms = useCallback(async () => {
     try {
-      // Get confirmed reservations
       const resData = await reservationApi.get(`/reservations/user/${user?.id}`, { params: { status: 'confirmed' } });
-      const confirmedEvents = (resData.data.reservations || resData.data.items || []).map(r => r.event_id);
+      const reservations = resData.data.reservations || resData.data.items || [];
 
-      // Get events where user is host
+      const eventInfoMap = {};
+      reservations.forEach(r => {
+        eventInfoMap[String(r.event_id)] = {
+          event_title: r.event_title,
+          event_date: r.event_date,
+          cover_image_url: r.event_cover_image_url,
+          host_name: r.host_name,
+          event_city: r.event_city,
+        };
+      });
+      const confirmedEvents = reservations.map(r => r.event_id);
+
       const hostData = await reservationApi.get('/events/host/my-events', { params: { page: 1, per_page: 50 } });
-      const hostEvents = (hostData.data.events || hostData.data.items || []).map(e => e.id);
+      const hostEvents = hostData.data.events || hostData.data.items || [];
+      hostEvents.forEach(e => {
+        eventInfoMap[String(e.id)] = {
+          event_title: e.title,
+          event_date: e.event_date,
+          cover_image_url: e.cover_image_url,
+          host_name: e.host_name,
+          event_city: e.city,
+        };
+      });
+      const hostEventIds = hostEvents.map(e => e.id);
 
-      const allEventIds = [...new Set([...confirmedEvents, ...hostEvents])];
+      const allEventIds = [...new Set([...confirmedEvents, ...hostEventIds])];
       if (allEventIds.length === 0) { setRooms([]); setLoading(false); return; }
 
-      // Get rooms for those events (deduplicate by room id)
       const roomsRes = await chatApi.post('/rooms/by-events', { event_ids: allEventIds });
       const seen = new Set();
       const unique = (roomsRes.data.rooms || []).filter(r => {
@@ -80,9 +184,21 @@ export default function ChatScreen({ route, navigation }) {
         seen.add(r.id);
         return true;
       });
-      setRooms(unique);
+
+      const enriched = unique.map(r => {
+        const info = eventInfoMap[String(r.event_id)] || {};
+        return {
+          ...r,
+          event_title: info.event_title || r.name,
+          event_date: info.event_date,
+          cover_image_url: info.cover_image_url,
+          host_name: info.host_name || r.host_name,
+          event_city: info.event_city,
+        };
+      });
+
+      setRooms(enriched);
     } catch {
-      // Fallback to old method
       try {
         const res = await chatApi.get('/rooms/my-rooms');
         setRooms(res.data.rooms || []);
@@ -97,11 +213,25 @@ export default function ChatScreen({ route, navigation }) {
   useEffect(() => {
     if (!openRoomId || openRoom) return;
     const found = rooms.find(r => r.id === openRoomId);
-    if (found) setOpenRoom(found);
-    else if (openRoomId && roomName) setOpenRoom({ id: openRoomId, name: roomName });
+    if (found) handleOpenRoom(found);
+    else if (openRoomId && roomName) handleOpenRoom({ id: openRoomId, name: roomName });
   }, [openRoomId, rooms]);
 
-  // ─── Open room → connect WS ───
+  // ─── Open room + mark read ───
+  const handleOpenRoom = useCallback(async (room) => {
+    setOpenRoom(room);
+    // Mark as read
+    try {
+      await chatApi.post(`/rooms/${room.id}/read`);
+      setUnreadCounts(prev => {
+        const next = { ...prev };
+        delete next[room.id];
+        return next;
+      });
+    } catch {}
+  }, []);
+
+  // ─── Open room -> connect WS ───
   useEffect(() => {
     if (!openRoom) return;
     (async () => {
@@ -118,6 +248,8 @@ export default function ChatScreen({ route, navigation }) {
           if (parsed.type === 'message' || parsed.type === 'system') {
             setMessages((prev) => [...prev, parsed.data]);
             setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
+            // Keep read pointer fresh while in the room
+            chatApi.post(`/rooms/${openRoom.id}/read`).catch(() => {});
           }
         } catch {}
       };
@@ -151,7 +283,6 @@ export default function ChatScreen({ route, navigation }) {
         return true;
       });
       setMembers(mems);
-      // Fetch profiles for each member
       const profiles = {};
       await Promise.all(mems.map(async (m) => {
         if (!m.user_id || m.user_id === user?.id) return;
@@ -192,6 +323,9 @@ export default function ChatScreen({ route, navigation }) {
     setMembersVisible(false);
     setMembers([]);
     setMemberProfiles({});
+    // Refresh unread counts + rooms after leaving
+    fetchUnreadCounts();
+    loadRooms();
   };
 
   // ─── Chat view ───
@@ -205,7 +339,7 @@ export default function ChatScreen({ route, navigation }) {
             <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           </Pressable>
           <View style={st.chatHeaderBody}>
-            <Text style={st.chatHeaderTitle} numberOfLines={1}>{openRoom.name}</Text>
+            <Text style={st.chatHeaderTitle} numberOfLines={1}>{openRoom.event_title || openRoom.name}</Text>
             <Text style={st.chatHeaderSub}>
               {openRoom.host_name ? `Chef ${openRoom.host_name}` : ''}
             </Text>
@@ -229,9 +363,11 @@ export default function ChatScreen({ route, navigation }) {
             }
             const isOwn = item.sender_id === userId;
             return (
-              <View style={[st.bubble, isOwn ? st.bubbleOwn : st.bubbleOther]}>
-                {!isOwn && <Text style={st.bubbleName}>{item.sender_name}</Text>}
-                <Text style={[st.bubbleText, isOwn && st.bubbleTextOwn]}>{item.content}</Text>
+              <View style={[st.msgRow, isOwn ? st.msgRowOwn : st.msgRowOther]}>
+                <View style={[st.bubble, isOwn ? st.bubbleOwn : st.bubbleOther]}>
+                  {!isOwn && <Text style={st.bubbleName}>{item.sender_name}</Text>}
+                  <Text style={[st.bubbleText, isOwn && st.bubbleTextOwn]}>{item.content}</Text>
+                </View>
               </View>
             );
           }}
@@ -255,10 +391,9 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         </KeyboardAvoidingView>
 
-        {/* ── Members Modal ── */}
+        {/* Members Modal */}
         <Modal visible={membersVisible} animationType="slide" onRequestClose={() => setMembersVisible(false)}>
           <View style={st.modalContainer}>
-            {/* Header with close */}
             <View style={st.membersTopBar}>
               <Pressable onPress={() => setMembersVisible(false)} hitSlop={16} style={st.membersCloseBtn}>
                 <Ionicons name="close" size={24} color={colors.textPrimary} />
@@ -303,7 +438,7 @@ export default function ChatScreen({ route, navigation }) {
                       <View style={st.memberNameRow}>
                         <Text style={st.memberName}>{displayName}</Text>
                         {isHost && <Text style={st.memberBadge}>CHEF</Text>}
-                        {isMe && <Text style={st.memberBadgeMe}>T\u00DA</Text>}
+                        {isMe && <Text style={st.memberBadgeMe}>TÚ</Text>}
                       </View>
                       {profile?.profile?.bio ? (
                         <Text style={st.memberBio} numberOfLines={1}>{profile.profile.bio}</Text>
@@ -334,6 +469,51 @@ export default function ChatScreen({ route, navigation }) {
     );
   }
 
+  // ─── Separate upcoming / past, sorted by activity ───
+  const now = new Date();
+  const upcoming = sortByActivity(
+    rooms.filter(r => !r.event_date || new Date(r.event_date) >= now)
+  );
+  const past = sortByActivity(
+    rooms.filter(r => r.event_date && new Date(r.event_date) < now)
+  );
+
+  const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+
+  const renderRoomRow = (item) => {
+    const imageUri = item.cover_image_url || getFallbackImage(item.event_title || item.name);
+    const title = item.event_title || item.name;
+    const date = formatEventDate(item.event_date);
+    const preview = item.last_message || 'Sé el primero en saludar';
+    const previewMuted = !item.last_message;
+    const unread = unreadCounts[item.id] || 0;
+
+    return (
+      <Pressable style={st.row} onPress={() => handleOpenRoom(item)}>
+        <Image source={{ uri: imageUri }} style={st.thumb} />
+        <View style={st.rowBody}>
+          <View style={st.rowLine}>
+            <Text style={[st.rowTitle, unread > 0 && st.rowTitleBold]} numberOfLines={1}>{title}</Text>
+            {item.last_message_at ? (
+              <Text style={[st.rowTime, unread > 0 && { color: colors.accent }]}>{timeAgo(item.last_message_at)}</Text>
+            ) : null}
+          </View>
+          {date ? <Text style={st.rowDate}>{date}</Text> : null}
+          <View style={st.rowPreviewRow}>
+            <Text style={[st.rowPreview, previewMuted && st.rowPreviewInvite, unread > 0 && st.rowPreviewUnread]} numberOfLines={1}>
+              {preview}
+            </Text>
+            {unread > 0 && (
+              <View style={st.unreadBadge}>
+                <Text style={st.unreadBadgeText}>{unread > 99 ? '99+' : unread}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Pressable>
+    );
+  };
+
   // ─── Room list view ───
   return (
     <SafeAreaView style={st.safe} edges={['top']}>
@@ -342,8 +522,8 @@ export default function ChatScreen({ route, navigation }) {
       </View>
       <Text style={st.standfirst}>
         {rooms.length > 0
-          ? `${rooms.length} conversaci\u00F3n${rooms.length > 1 ? 'es' : ''} abierta${rooms.length > 1 ? 's' : ''}.`
-          : 'Sin conversaciones a\u00FAn.'}
+          ? `${rooms.length} conversación${rooms.length > 1 ? 'es' : ''} abierta${rooms.length > 1 ? 's' : ''}.`
+          : 'Sin conversaciones aún.'}
       </Text>
       <View style={st.ruleFull} />
 
@@ -355,32 +535,33 @@ export default function ChatScreen({ route, navigation }) {
           refreshControl={<RefreshControl refreshing={false} onRefresh={loadRooms} tintColor={colors.accent} />}
         >
           <Ionicons name="chatbubbles-outline" size={36} color={colors.textMuted} />
-          <Text style={st.emptyTitle}>Sin chats todav\u00EDa</Text>
-          <Text style={st.emptyText}>Tus cenas confirmadas aparecer\u00E1n aqu\u00ED.</Text>
+          <Text style={st.emptyTitle}>Sin chats todavía</Text>
+          <Text style={st.emptyText}>
+            Cuando confirmes una cena, aquí aparecerá el grupo para conocer a los demás comensales.
+          </Text>
         </ScrollView>
       ) : (
-        <FlatList
-          data={rooms}
-          keyExtractor={(r) => r.id}
+        <ScrollView
           contentContainerStyle={st.listContent}
-          refreshControl={<RefreshControl refreshing={false} onRefresh={loadRooms} tintColor={colors.accent} />}
-          renderItem={({ item }) => (
-            <Pressable style={st.row} onPress={() => setOpenRoom(item)}>
-              <View style={st.thumb}>
-                <Text style={st.thumbEmoji}>{getEmoji(item.name)}</Text>
-              </View>
-              <View style={st.rowBody}>
-                <View style={st.rowLine}>
-                  <Text style={st.rowTitle} numberOfLines={1}>{item.name}</Text>
-                  <Text style={st.rowTime}>{timeAgo(item.last_message_at)}</Text>
-                </View>
-                <Text style={st.rowPreview} numberOfLines={1}>
-                  {item.last_message || 'Sin mensajes a\u00FAn'}
-                </Text>
-              </View>
-            </Pressable>
+          refreshControl={<RefreshControl refreshing={false} onRefresh={() => { loadRooms(); fetchUnreadCounts(); }} tintColor={colors.accent} />}
+        >
+          {upcoming.length > 0 && (
+            <>
+              {past.length > 0 && <Text style={st.sectionLabel}>PRÓXIMAS</Text>}
+              {upcoming.map(item => (
+                <View key={item.id}>{renderRoomRow(item)}</View>
+              ))}
+            </>
           )}
-        />
+          {past.length > 0 && (
+            <>
+              <Text style={st.sectionLabel}>PASADAS</Text>
+              {past.map(item => (
+                <View key={item.id} style={{ opacity: 0.6 }}>{renderRoomRow(item)}</View>
+              ))}
+            </>
+          )}
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -397,26 +578,43 @@ const st = StyleSheet.create({
   standfirst: { ...typography.standfirst, fontSize: 15, color: colors.textMuted, paddingHorizontal: spacing.gutter, marginTop: spacing.xs, marginBottom: spacing.md },
   ruleFull: { height: borders.hairline, backgroundColor: colors.borderHairline, marginHorizontal: spacing.gutter },
   ruleNoMargin: { height: borders.hairline, backgroundColor: colors.borderHairline },
-  listContent: { paddingHorizontal: spacing.gutter },
-  empty: { paddingHorizontal: spacing.gutter, paddingTop: spacing.xxl, alignItems: 'center', gap: spacing.sm },
+  listContent: { paddingHorizontal: spacing.gutter, paddingBottom: spacing.floatingTabTotalH },
+  empty: { paddingHorizontal: spacing.gutter, paddingTop: spacing.xxl, alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.floatingTabTotalH },
   emptyTitle: { ...typography.dinnerTitle, fontSize: 20, color: colors.textPrimary },
   emptyText: { ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
 
+  sectionLabel: {
+    ...typography.label, color: colors.textMuted, fontSize: 10, letterSpacing: 1.5,
+    marginTop: spacing.lg, marginBottom: spacing.xs,
+  },
+
   row: {
-    flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start',
+    flexDirection: 'row', gap: spacing.md, alignItems: 'center',
     paddingVertical: spacing.md, borderBottomWidth: borders.hairline, borderBottomColor: colors.borderHairline,
   },
   thumb: {
-    width: sizes.thumb, height: sizes.thumb,
-    borderWidth: borders.hairline, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
+    width: 56, height: 56, borderRadius: radius.xs,
+    backgroundColor: colors.surface,
   },
-  thumbEmoji: { fontSize: 22 },
   rowBody: { flex: 1, minWidth: 0 },
   rowLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  rowTitle: { ...typography.dinnerTitle, color: colors.textPrimary, flexShrink: 1 },
+  rowTitle: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 15, flexShrink: 1 },
+  rowTitleBold: { fontWeight: '800' },
+  rowDate: { ...typography.label, color: colors.textMuted, fontSize: 10, letterSpacing: 0, marginTop: 1 },
   rowTime: { ...typography.label, fontSize: 10, color: colors.textMuted, letterSpacing: 0 },
-  rowPreview: { ...typography.body, fontSize: 13, color: colors.textMuted, marginTop: spacing.xxs },
+  rowPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
+  rowPreview: { ...typography.body, fontSize: 13, color: colors.textMuted, flex: 1 },
+  rowPreviewInvite: { color: colors.accent, fontStyle: 'italic' },
+  rowPreviewUnread: { color: colors.textPrimary, fontWeight: '600' },
+  unreadBadge: {
+    backgroundColor: colors.accent, borderRadius: radius.pill,
+    minWidth: 20, height: 20,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  unreadBadgeText: {
+    color: colors.onAccent, fontSize: 11, fontWeight: '700',
+  },
 
   // Chat view
   chatHeader: {
@@ -429,9 +627,14 @@ const st = StyleSheet.create({
 
   msgList: { padding: spacing.gutter, paddingBottom: spacing.xl },
   systemMsg: { ...typography.label, color: colors.textMuted, textAlign: 'center', marginVertical: spacing.sm, letterSpacing: 0 },
-  bubble: { maxWidth: '78%', padding: spacing.sm, marginBottom: spacing.xs, borderRadius: radius.sm },
-  bubbleOwn: { alignSelf: 'flex-end', backgroundColor: colors.textPrimary },
-  bubbleOther: { alignSelf: 'flex-start', backgroundColor: colors.surface },
+
+  // Bubble layout — wrapper row controls alignment, bubble has content
+  msgRow: { width: '100%', marginBottom: spacing.xs },
+  msgRowOwn: { alignItems: 'flex-end' },
+  msgRowOther: { alignItems: 'flex-start' },
+  bubble: { maxWidth: '78%', padding: spacing.sm, borderRadius: radius.sm },
+  bubbleOwn: { backgroundColor: colors.textPrimary },
+  bubbleOther: { backgroundColor: colors.surface },
   bubbleName: { ...typography.labelSm, color: colors.accent, marginBottom: spacing.xxs, letterSpacing: 0 },
   bubbleText: { ...typography.body, color: colors.textPrimary },
   bubbleTextOwn: { color: colors.onAccent },

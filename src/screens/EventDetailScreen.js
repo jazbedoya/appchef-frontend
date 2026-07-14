@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, ScrollView, Image, StyleSheet, TextInput, Modal,
-  TouchableOpacity, ActivityIndicator, Alert,
+  TouchableOpacity, ActivityIndicator, Alert, StatusBar,
   Platform, Dimensions, Pressable, KeyboardAvoidingView,
 } from 'react-native';
 import StripePaymentSheet from '../components/StripePaymentSheet';
@@ -220,6 +220,9 @@ const EventDetailScreen = ({ route, navigation }) => {
             <Image source={{ uri: heroImage(event) }} style={[s.heroImg, myRes?.status === 'confirmed' && s.heroImgCompact]} resizeMode="cover" />
           )}
           <View style={s.heroScrim} />
+          <Pressable style={s.heroBack} onPress={() => navigation.goBack()} hitSlop={12}>
+            <Icon name="chevron-back" size={22} color="#fff" />
+          </Pressable>
           <View style={s.heroOverlay}>
             <Text style={s.heroOverline}>
               {cuisineTags[0] || ''}{city ? ` · ${city}` : ''}
@@ -536,6 +539,13 @@ const s = StyleSheet.create({
   heroScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(26,22,19,0.35)',
+  },
+  heroBack: {
+    position: 'absolute', top: Platform.OS === 'android' ? (StatusBar.currentHeight || 40) + 8 : 52, left: spacing.gutter,
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(26,22,19,0.45)',
+    alignItems: 'center', justifyContent: 'center',
+    zIndex: 10,
   },
   heroOverlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,

@@ -102,7 +102,7 @@ export default function MisCenasScreen({ navigation }) {
     const isPast = !['confirmed', 'pending_approval', 'pending_payment'].includes(r.status);
     return (
       <Pressable key={r.id} style={s.card}
-        onPress={() => navigation.navigate('Inicio', { screen: 'EventDetail', params: { eventId: r.event_id } })}>
+        onPress={() => navigation.navigate('EventDetail', { eventId: r.event_id })}>
         <Image source={{ uri: img }} style={s.cardImg} />
         <View style={s.cardBody}>
           <Text style={[s.cardTitle, isPast && { color: colors.textMuted }]} numberOfLines={1}>
