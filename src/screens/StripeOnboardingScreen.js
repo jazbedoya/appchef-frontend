@@ -74,12 +74,12 @@ export default function StripeOnboardingScreen({ navigation }) {
 
       <View style={st.content}>
         <Ionicons name="card-outline" size={48} color={colors.accent} />
-        <Text style={st.title}>Configura tus pagos</Text>
+        <Text style={st.title}>Antes de crear tu cena</Text>
         <Text style={st.body}>
-          Para cobrar tus cenas necesitas configurar tus pagos con Stripe. Es r\u00E1pido, seguro y solo lo haces una vez.
+          Configura cómo cobrarás a tus comensales. Es rápido, seguro y solo lo haces una vez.
         </Text>
         <Text style={st.body}>
-          Stripe gestiona los datos bancarios y fiscales. App Chef nunca ve tu informaci\u00F3n financiera.
+          Stripe gestiona tus datos bancarios. App Chef nunca ve tu información financiera.
         </Text>
 
         {status === 'restricted' && (

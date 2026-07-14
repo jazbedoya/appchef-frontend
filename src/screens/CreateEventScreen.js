@@ -95,8 +95,13 @@ export default function CreateEventScreen({ navigation }) {
     { locale: es }
   );
 
+  const MIN_PRICE = 5;
+  const priceNum = parseFloat(price) || 0;
+  const serviceFee = Math.max(priceNum * 0.10, 2);
+  const guestTotal = priceNum + serviceFee;
+
   const step1Valid = title.trim().length > 0 && cocinas.length > 0 && selectedAddress;
-  const step2Valid = price.trim().length > 0 && parseFloat(price) > 0;
+  const step2Valid = priceNum >= MIN_PRICE;
 
   // ─── Cuisine toggle (multi-select) ───
   const toggleCocina = (c) => {
@@ -185,7 +190,10 @@ export default function CreateEventScreen({ navigation }) {
 
   const publish = async () => {
     setTouched((p) => ({ ...p, price: true }));
-    if (!step2Valid) return;
+    if (!step2Valid) {
+      Alert.alert('Revisa el formulario', priceNum < MIN_PRICE ? `El precio mínimo es €${MIN_PRICE} por persona.` : 'Completa todos los campos obligatorios.');
+      return;
+    }
     setSaving(true);
     try {
       const body = {
@@ -244,7 +252,8 @@ export default function CreateEventScreen({ navigation }) {
                 ) : (
                   <View style={st.photoPlaceholder}>
                     <Ionicons name="camera-outline" size={32} color={colors.textMuted} />
-                    <Text style={st.photoHint}>Foto de la cena</Text>
+                    <Text style={st.photoHint}>AÑADIR FOTO</Text>
+                    <Text style={st.photoSub}>Un plato, tu mesa puesta o tu cocina</Text>
                   </View>
                 )}
                 <View style={st.photoOverlay}>
@@ -412,13 +421,19 @@ export default function CreateEventScreen({ navigation }) {
 
               {/* Precio */}
               <Field
-                label="Precio por persona *"
-                placeholder="45"
+                label="Precio por persona * (mín. €5)"
+                placeholder="25"
                 value={price}
                 onChangeText={setPrice}
                 keyboardType="numeric"
-                error={touched.price && (!price.trim() || parseFloat(price) <= 0) ? 'Obligatorio' : null}
+                error={touched.price && priceNum < MIN_PRICE ? `Mínimo €${MIN_PRICE} por persona` : null}
               />
+              {priceNum >= MIN_PRICE && (
+                <View style={st.feeBreakdown}>
+                  <Text style={st.feeRow}>Tú pones: €{priceNum.toFixed(0)} → recibes €{priceNum.toFixed(0)} íntegros</Text>
+                  <Text style={st.feeRow}>El comensal paga: €{guestTotal.toFixed(2)} (con gastos de servicio)</Text>
+                </View>
+              )}
 
               {/* Alérgenos */}
               <View style={st.block}>
@@ -440,7 +455,7 @@ export default function CreateEventScreen({ navigation }) {
                     <Text style={st.previewTitle} numberOfLines={2}>{title || 'Tu cena'}</Text>
                     <View style={st.previewFooter}>
                       <Text style={st.previewMeta}>
-                        €{price || '0'} · {plazas} plazas · {formattedDate}
+                        €{priceNum > 0 ? guestTotal.toFixed(0) : '0'} · {plazas} plazas · {formattedDate}
                       </Text>
                     </View>
                   </View>
@@ -508,6 +523,7 @@ const st = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
   },
   photoHint: { ...typography.label, color: colors.textMuted, letterSpacing: 1.2, fontSize: 9 },
+  photoSub: { ...typography.body, color: colors.textMuted, fontSize: 11, marginTop: 2 },
   photoOverlay: {
     position: 'absolute', bottom: spacing.sm, right: spacing.sm,
     width: 30, height: 30, borderRadius: radius.pill,
@@ -558,6 +574,10 @@ const st = StyleSheet.create({
     borderWidth: borders.hairline, borderColor: colors.borderHairline,
     padding: spacing.sm, minHeight: 80, fontSize: 14,
   },
+
+  // Fee breakdown
+  feeBreakdown: { marginTop: -spacing.sm, marginBottom: spacing.lg, paddingHorizontal: spacing.xxs },
+  feeRow: { ...typography.body, color: colors.textMuted, fontSize: 11, lineHeight: 18 },
 
   // Date button
   dateBtn: {
