@@ -20,6 +20,7 @@ import { borders } from '../theme/borders';
 import { radius } from '../theme/radius';
 import { typography } from '../theme/typography';
 import RatingStars from '../components/RatingStars';
+import ArrivalInfoCard from '../components/ArrivalInfoCard';
 import eventsService from '../services/eventsService';
 import { hapticSuccess, hapticError, hapticMedium } from '../lib/haptics';
 
@@ -256,21 +257,12 @@ const EventDetailScreen = ({ route, navigation }) => {
                 </View>
               </View>
 
-              {address_line1 && (
-                <View style={s.addressCard}>
-                  <Icon name="location" size={20} color={colors.accent} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.addressText}>{address_line1}</Text>
-                    <Text style={s.addressCity}>{city}</Text>
-                  </View>
-                  <Pressable onPress={() => {
-                    const q = encodeURIComponent(`${address_line1}, ${city}`);
-                    import('react-native').then(({ Linking }) => Linking.openURL(`https://maps.google.com/?q=${q}`));
-                  }}>
-                    <Text style={s.addressLink}>CÓMO LLEGAR</Text>
-                  </Pressable>
-                </View>
-              )}
+              <ArrivalInfoCard
+                address={address_line1}
+                city={city}
+                locationHint={event.location_hint}
+                eventDate={event_date}
+              />
 
               <Pressable style={s.chatBtn}
                 onPress={() => navigation.navigate('Chat', { screen: 'ChatMain', params: { openRoomId: chatRoomId, roomName: title, eventId: event.id } })}>

@@ -2,11 +2,12 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, Image, StyleSheet,
-  ActivityIndicator, RefreshControl, Linking,
+  ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
+import ArrivalInfoCard from '../components/ArrivalInfoCard';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -115,27 +116,7 @@ export default function MisCenasScreen({ navigation }) {
           </View>
           <Text style={s.cardPrice}>€{Number(r.total_amount).toFixed(0)}</Text>
           {r.status === 'confirmed' && r.event_address ? (
-            <View style={s.addressBlock}>
-              <View style={s.addressRow}>
-                <Ionicons name="location" size={14} color={colors.accent} />
-                <Text style={s.addressText} numberOfLines={2}>
-                  {r.event_address}{r.event_city ? `, ${r.event_city}` : ''}
-                </Text>
-              </View>
-              {r.event_location_hint ? (
-                <Text style={s.addressHint} numberOfLines={2}>{r.event_location_hint}</Text>
-              ) : null}
-              <Pressable
-                style={s.directionsBtn}
-                onPress={() => {
-                  const q = encodeURIComponent(`${r.event_address}, ${r.event_city || ''}`);
-                  Linking.openURL(`https://maps.google.com/?q=${q}`);
-                }}
-              >
-                <Ionicons name="navigate-outline" size={12} color={colors.accent} />
-                <Text style={s.directionsBtnText}>CÓMO LLEGAR</Text>
-              </Pressable>
-            </View>
+            <ArrivalInfoCard compact address={r.event_address} city={r.event_city} locationHint={r.event_location_hint} />
           ) : r.status !== 'confirmed' && !isPast ? (
             <Text style={s.addressPending}>La dirección se revelará cuando el anfitrión confirme tu plaza.</Text>
           ) : null}
@@ -285,12 +266,6 @@ const s = StyleSheet.create({
   pendingDot: { width: 6, height: 6, borderRadius: radius.pill, backgroundColor: colors.accent },
   pendingText: { ...typography.label, color: colors.accent, letterSpacing: 1, fontSize: 8 },
 
-  addressBlock: { marginTop: spacing.xs, paddingTop: spacing.xs, borderTopWidth: borders.hairline, borderTopColor: colors.borderHairline },
-  addressRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 },
-  addressText: { ...typography.body, color: colors.textPrimary, fontSize: 11, flex: 1 },
-  addressHint: { ...typography.body, color: colors.textMuted, fontSize: 10, fontStyle: 'italic', marginTop: 2, marginLeft: 18 },
-  directionsBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
-  directionsBtnText: { ...typography.label, color: colors.accent, fontSize: 9, letterSpacing: 1 },
   addressPending: { ...typography.body, color: colors.textMuted, fontSize: 10, fontStyle: 'italic', marginTop: spacing.xxs },
 
   empty: {

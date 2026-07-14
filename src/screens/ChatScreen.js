@@ -18,6 +18,7 @@ import { radius } from '../theme/radius';
 import { sizes } from '../theme/sizes';
 import { typography } from '../theme/typography';
 import { chatApi, userApi, reservationApi, CHAT_SERVICE_URL } from '../services/api';
+import ArrivalInfoCard from '../components/ArrivalInfoCard';
 
 const WS_BASE = CHAT_SERVICE_URL.replace('http', 'ws');
 
@@ -78,6 +79,8 @@ export default function ChatScreen({ route, navigation }) {
   const [memberProfiles, setMemberProfiles] = useState({});
   const [followLoading, setFollowLoading] = useState(null);
   const [unreadCounts, setUnreadCounts] = useState({}); // { room_id: count }
+  const [locationVisible, setLocationVisible] = useState(false);
+  const [eventInfo, setEventInfo] = useState(null); // { address_line1, city, location_hint, event_date }
   const wsRef = useRef(null);
   const flatRef = useRef(null);
   const pollRef = useRef(null);
@@ -294,6 +297,30 @@ export default function ChatScreen({ route, navigation }) {
     setInput('');
   };
 
+  // ─── Location panel ───
+  const openLocation = async () => {
+    if (!openRoom?.event_id) {
+      // Fallback: use enriched room data
+      if (openRoom?.event_title) {
+        setEventInfo({
+          address_line1: null,
+          city: openRoom.event_city,
+          event_date: openRoom.event_date,
+        });
+      }
+      setLocationVisible(true);
+      return;
+    }
+    setLocationVisible(true);
+    try {
+      // Uses the secure GET /events/{id} — address only if confirmed/host
+      const res = await reservationApi.get(`/events/${openRoom.event_id}`);
+      setEventInfo(res.data);
+    } catch {
+      setEventInfo(null);
+    }
+  };
+
   // ─── Members panel ───
   const openMembers = async () => {
     if (!openRoom) return;
@@ -345,6 +372,8 @@ export default function ChatScreen({ route, navigation }) {
     setOpenRoom(null);
     setMessages([]);
     setMembersVisible(false);
+    setLocationVisible(false);
+    setEventInfo(null);
     setMembers([]);
     setMemberProfiles({});
     // Refresh unread counts + rooms after leaving
@@ -368,6 +397,9 @@ export default function ChatScreen({ route, navigation }) {
               {openRoom.host_name ? `Chef ${openRoom.host_name}` : ''}
             </Text>
           </View>
+          <Pressable onPress={openLocation} hitSlop={12} style={{ marginRight: spacing.xs }}>
+            <Ionicons name="location-outline" size={22} color={colors.textPrimary} />
+          </Pressable>
           <Pressable onPress={openMembers} hitSlop={12}>
             <Ionicons name="people-outline" size={22} color={colors.textPrimary} />
           </Pressable>
@@ -488,6 +520,34 @@ export default function ChatScreen({ route, navigation }) {
               }}
             />
           </View>
+        </Modal>
+
+        {/* Location Modal */}
+        <Modal visible={locationVisible} animationType="slide" transparent onRequestClose={() => setLocationVisible(false)}>
+          <Pressable style={st.locationOverlay} onPress={() => setLocationVisible(false)}>
+            <Pressable style={st.locationSheet} onPress={() => {}}>
+              <View style={st.locationHandle} />
+              <Text style={st.locationTitle}>Información de llegada</Text>
+              <View style={st.ruleNoMargin} />
+              {eventInfo?.address_line1 ? (
+                <View style={{ paddingHorizontal: spacing.gutter, paddingTop: spacing.md }}>
+                  <ArrivalInfoCard
+                    address={eventInfo.address_line1}
+                    city={eventInfo.city}
+                    locationHint={eventInfo.location_hint}
+                    eventDate={eventInfo.event_date}
+                  />
+                </View>
+              ) : (
+                <View style={st.locationPending}>
+                  <Ionicons name="lock-closed-outline" size={28} color={colors.textMuted} />
+                  <Text style={st.locationPendingText}>
+                    La dirección estará disponible cuando el anfitrión confirme tu plaza.
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+          </Pressable>
         </Modal>
       </SafeAreaView>
     );
@@ -760,5 +820,33 @@ const st = StyleSheet.create({
   },
   followBtnTextActive: {
     color: colors.textPrimary,
+  },
+
+  // Location modal
+  locationOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  locationSheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 16, borderTopRightRadius: 16,
+    paddingBottom: spacing.xxxl,
+    minHeight: 200,
+  },
+  locationHandle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: colors.borderHairline,
+    alignSelf: 'center', marginTop: spacing.sm, marginBottom: spacing.md,
+  },
+  locationTitle: {
+    ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 18,
+    paddingHorizontal: spacing.gutter, marginBottom: spacing.md,
+  },
+  locationPending: {
+    alignItems: 'center', gap: spacing.sm,
+    paddingVertical: spacing.xxl, paddingHorizontal: spacing.xxl,
+  },
+  locationPendingText: {
+    ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 20,
   },
 });
