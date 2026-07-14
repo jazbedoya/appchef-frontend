@@ -231,16 +231,35 @@ export default function ChatScreen({ route, navigation }) {
     } catch {}
   }, []);
 
-  // ─── Open room -> connect WS ───
+  // ─── Open room: load history FIRST, then connect WS ───
   useEffect(() => {
     if (!openRoom) return;
+    let cancelled = false;
+
     (async () => {
+      // 1. Load historical messages BEFORE connecting WS
+      let history = [];
       try {
         const res = await chatApi.get(`/rooms/${openRoom.id}/messages?limit=50`);
-        setMessages(res.data || []);
-      } catch {}
-    })();
-    AsyncStorage.getItem('@appchef:access_token').then((t) => {
+        history = res.data || [];
+      } catch (err) {
+        console.warn('[Chat] Failed to load messages:', err?.message);
+        // Retry once after 1s
+        try {
+          await new Promise(r => setTimeout(r, 1000));
+          if (cancelled) return;
+          const res = await chatApi.get(`/rooms/${openRoom.id}/messages?limit=50`);
+          history = res.data || [];
+        } catch (err2) {
+          console.warn('[Chat] Retry also failed:', err2?.message);
+        }
+      }
+      if (cancelled) return;
+      setMessages(history);
+
+      // 2. NOW connect WebSocket (history is already set)
+      const t = await AsyncStorage.getItem('@appchef:access_token');
+      if (cancelled) return;
       const ws = new WebSocket(`${WS_BASE}/ws/${openRoom.id}?token=${t || 'anon'}`);
       ws.onmessage = (evt) => {
         try {
@@ -248,14 +267,19 @@ export default function ChatScreen({ route, navigation }) {
           if (parsed.type === 'message' || parsed.type === 'system') {
             setMessages((prev) => [...prev, parsed.data]);
             setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
-            // Keep read pointer fresh while in the room
             chatApi.post(`/rooms/${openRoom.id}/read`).catch(() => {});
           }
         } catch {}
       };
+      ws.onerror = (e) => console.warn('[Chat] WS error:', e?.message);
       wsRef.current = ws;
-    });
-    return () => { wsRef.current?.close(); wsRef.current = null; };
+    })();
+
+    return () => {
+      cancelled = true;
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
   }, [openRoom]);
 
   const sendMessage = () => {
