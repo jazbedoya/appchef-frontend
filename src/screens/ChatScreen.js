@@ -300,6 +300,7 @@ export default function ChatScreen({ route, navigation }) {
 
   // ─── Location panel ───
   const openLocation = async () => {
+    setEventInfo(undefined); // loading state
     setLocationVisible(true);
     const eid = openRoom?.event_id || routeEventId;
     if (!eid) { setEventInfo(null); return; }
@@ -514,15 +515,25 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         </Modal>
 
-        {/* Location Modal */}
+        {/* Location Bottom Sheet */}
         <Modal visible={locationVisible} animationType="slide" transparent onRequestClose={() => setLocationVisible(false)}>
-          <Pressable style={st.locationOverlay} onPress={() => setLocationVisible(false)}>
-            <Pressable style={st.locationSheet} onPress={() => {}}>
-              <View style={st.locationHandle} />
-              <Text style={st.locationTitle}>Información de llegada</Text>
+          <Pressable style={st.sheetOverlay} onPress={() => setLocationVisible(false)}>
+            <View onStartShouldSetResponder={() => true} style={st.sheetContainer}>
+              {/* Handle + close */}
+              <View style={st.sheetHandleRow}>
+                <View style={st.sheetHandle} />
+              </View>
+              <View style={st.sheetHeader}>
+                <Text style={st.sheetTitle}>Información de llegada</Text>
+                <Pressable onPress={() => setLocationVisible(false)} hitSlop={12} style={st.sheetCloseBtn}>
+                  <Ionicons name="close" size={20} color={colors.textPrimary} />
+                </Pressable>
+              </View>
               <View style={st.ruleNoMargin} />
-              {eventInfo?.address_line1 ? (
-                <View style={{ paddingHorizontal: spacing.gutter, paddingTop: spacing.md }}>
+              {eventInfo === undefined ? (
+                <ActivityIndicator color={colors.accent} style={{ paddingVertical: spacing.xxl }} />
+              ) : eventInfo?.address_line1 ? (
+                <View style={{ padding: spacing.gutter }}>
                   <ArrivalInfoCard
                     address={eventInfo.address_line1}
                     city={eventInfo.city}
@@ -531,14 +542,14 @@ export default function ChatScreen({ route, navigation }) {
                   />
                 </View>
               ) : (
-                <View style={st.locationPending}>
+                <View style={st.sheetPending}>
                   <Ionicons name="lock-closed-outline" size={28} color={colors.textMuted} />
-                  <Text style={st.locationPendingText}>
+                  <Text style={st.sheetPendingText}>
                     La dirección estará disponible cuando el anfitrión confirme tu plaza.
                   </Text>
                 </View>
               )}
-            </Pressable>
+            </View>
           </Pressable>
         </Modal>
       </SafeAreaView>
@@ -814,31 +825,41 @@ const st = StyleSheet.create({
     color: colors.textPrimary,
   },
 
-  // Location modal
-  locationOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
+  // Location bottom sheet
+  sheetOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
-  locationSheet: {
+  sheetContainer: {
     backgroundColor: colors.background,
     borderTopLeftRadius: 16, borderTopRightRadius: 16,
-    paddingBottom: spacing.xxxl,
-    minHeight: 200,
+    paddingBottom: Platform.OS === 'ios' ? 34 : spacing.xxl,
+    maxHeight: '70%',
   },
-  locationHandle: {
+  sheetHandleRow: {
+    alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.xs,
+  },
+  sheetHandle: {
     width: 36, height: 4, borderRadius: 2,
-    backgroundColor: colors.borderHairline,
-    alignSelf: 'center', marginTop: spacing.sm, marginBottom: spacing.md,
+    backgroundColor: colors.border,
   },
-  locationTitle: {
+  sheetHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.gutter, paddingBottom: spacing.md,
+  },
+  sheetTitle: {
     ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 18,
-    paddingHorizontal: spacing.gutter, marginBottom: spacing.md,
   },
-  locationPending: {
+  sheetCloseBtn: {
+    width: 32, height: 32, borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sheetPending: {
     alignItems: 'center', gap: spacing.sm,
     paddingVertical: spacing.xxl, paddingHorizontal: spacing.xxl,
   },
-  locationPendingText: {
+  sheetPendingText: {
     ...typography.body, color: colors.textMuted, textAlign: 'center', lineHeight: 20,
   },
 });
