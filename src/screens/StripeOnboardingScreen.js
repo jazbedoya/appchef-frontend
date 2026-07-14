@@ -1,6 +1,7 @@
 // StripeOnboardingScreen.js — Gate: configurar pagos antes de crear cena
 import React, { useState, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/core';
 import { useSelector } from 'react-redux';
@@ -41,10 +42,16 @@ export default function StripeOnboardingScreen({ navigation }) {
       const res = await userApi.post(`/users/${user.id}/stripe-onboarding`);
       const url = res.data.url;
       if (url) {
-        await Linking.openURL(url);
+        // Open in-app browser — when dismissed, useFocusEffect triggers checkStatus()
+        await WebBrowser.openBrowserAsync(url, {
+          dismissButtonStyle: 'done',
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+        });
+        // User returned from browser — re-check status
+        checkStatus();
       }
     } catch (e) {
-      Alert.alert('Error', e.userMessage || 'No se pudo iniciar la configuraci\u00F3n.');
+      Alert.alert('Error', e.userMessage || 'No se pudo iniciar la configuración.');
     }
     setStarting(false);
   };
