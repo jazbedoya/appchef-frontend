@@ -1,7 +1,7 @@
 // CreateEventScreen.js — Wizard 2 pasos: "Tu cena" + "Cuándo y cuánto"
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
-  View, Text, ScrollView, Pressable, TextInput, Image, Modal,
+  View, Text, ScrollView, Pressable, TextInput, Image, Modal, FlatList,
   StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,7 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { selectUser } from '../store/authSlice';
 import { reservationApi } from '../services/api';
-import { hapticSuccess, hapticError } from '../lib/haptics';
+import { hapticSuccess, hapticSelection } from '../lib/haptics';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { borders } from '../theme/borders';
@@ -27,10 +27,9 @@ import Chip from '../components/Chip';
 import Stepper from '../components/Stepper';
 import PrimaryButton from '../components/PrimaryButton';
 import BackButton from '../components/BackButton';
+import { CUISINES, CUISINE_IMAGES } from '../constants/cuisines';
 
-const COCINAS = ['Italiana', 'Japonesa', 'Vegana', 'Española', 'Peruana', 'Mediterránea', 'Francesa', 'Marroquí'];
 const ALERGENOS = ['Gluten', 'Lácteos', 'Frutos secos', 'Mariscos', 'Sin restricciones'];
-
 const TODAY = format(new Date(), 'yyyy-MM-dd');
 
 const CAL_THEME = {
@@ -50,30 +49,30 @@ const CAL_THEME = {
   arrowColor: colors.textPrimary,
 };
 
-const CUISINE_IMAGES = {
-  Italiana:     'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80',
-  Japonesa:     'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=800&q=80',
-  Vegana:       'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800&q=80',
-  Española:     'https://images.unsplash.com/photo-1515443961218-a51367888e4b?w=800&q=80',
-  Mediterránea: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=800&q=80',
-  Francesa:     'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80',
-  Peruana:      'https://images.unsplash.com/photo-1535399831218-d5bd36d1a6b3?w=800&q=80',
-  Marroquí:     'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=800&q=80',
-};
+// ─── Nominatim geocoding (free, no API key) ───
+const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
+let _searchTimer = null;
 
 export default function CreateEventScreen({ navigation }) {
   const user = useSelector(selectUser);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
+  const scrollRef = useRef(null);
 
   // Step 1 — Tu cena
   const [title, setTitle] = useState('');
-  const [cocina, setCocina] = useState('Italiana');
+  const [cocinas, setCocinas] = useState([]);  // multi-select
   const [coverImage, setCoverImage] = useState(null);
-  const [city, setCity] = useState('');
-  const [address, setAddress] = useState('');
-  const [showDesc, setShowDesc] = useState(false);
   const [description, setDescription] = useState('');
+  const [showDesc, setShowDesc] = useState(false);
+
+  // Location
+  const [addressQuery, setAddressQuery] = useState('');
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [searchingAddress, setSearchingAddress] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState(null); // { display, lat, lng, city, road }
+  const [addressLine2, setAddressLine2] = useState(''); // piso, puerta
+  const [locationHint, setLocationHint] = useState(''); // indicaciones
 
   // Step 2 — Cuándo y cuánto
   const [selectedDate, setSelectedDate] = useState(format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd'));
@@ -96,8 +95,51 @@ export default function CreateEventScreen({ navigation }) {
     { locale: es }
   );
 
-  const step1Valid = title.trim().length > 0 && city.trim().length > 0 && address.trim().length > 0;
+  const step1Valid = title.trim().length > 0 && cocinas.length > 0 && selectedAddress;
   const step2Valid = price.trim().length > 0 && parseFloat(price) > 0;
+
+  // ─── Cuisine toggle (multi-select) ───
+  const toggleCocina = (c) => {
+    hapticSelection();
+    setCocinas(prev =>
+      prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]
+    );
+  };
+
+  // ─── Address search (Nominatim) ───
+  const searchAddress = useCallback((text) => {
+    setAddressQuery(text);
+    setSelectedAddress(null);
+    clearTimeout(_searchTimer);
+    if (text.trim().length < 3) { setAddressSuggestions([]); return; }
+    _searchTimer = setTimeout(async () => {
+      setSearchingAddress(true);
+      try {
+        const q = encodeURIComponent(text);
+        const res = await fetch(
+          `${NOMINATIM_URL}/search?q=${q}&format=json&addressdetails=1&limit=5&countrycodes=es`,
+          { headers: { 'Accept-Language': 'es' } }
+        );
+        const data = await res.json();
+        setAddressSuggestions(data.map(r => ({
+          display: r.display_name,
+          lat: parseFloat(r.lat),
+          lng: parseFloat(r.lon),
+          city: r.address?.city || r.address?.town || r.address?.village || r.address?.municipality || '',
+          road: r.address?.road ? `${r.address.road}${r.address.house_number ? ` ${r.address.house_number}` : ''}` : r.display_name.split(',')[0],
+          postcode: r.address?.postcode || '',
+          state: r.address?.state || '',
+        })));
+      } catch { setAddressSuggestions([]); }
+      setSearchingAddress(false);
+    }, 400); // debounce
+  }, []);
+
+  const selectAddress = (suggestion) => {
+    setSelectedAddress(suggestion);
+    setAddressQuery(suggestion.road);
+    setAddressSuggestions([]);
+  };
 
   // Time sync
   const syncTimeFromInput = (text) => {
@@ -136,7 +178,7 @@ export default function CreateEventScreen({ navigation }) {
   };
 
   const goNext = () => {
-    setTouched({ title: true, city: true, address: true });
+    setTouched({ title: true, cocina: true, address: true });
     if (!step1Valid) return;
     setStep(2);
   };
@@ -149,16 +191,20 @@ export default function CreateEventScreen({ navigation }) {
       const body = {
         title: title.trim(),
         description: description.trim() || title.trim(),
-        cuisine_type: [cocina],
+        cuisine_type: cocinas,
         dining_style: 'dinner',
         event_date: eventDate.toISOString(),
         max_guests: plazas,
         price_per_person: parseFloat(price),
         menu: { courses: [], notes: null },
         dietary_options: [alergeno],
-        city: city.trim(),
-        address_line1: address.trim(),
+        city: selectedAddress.city,
+        address_line1: selectedAddress.road,
+        address_line2: addressLine2.trim() || null,
         country: 'ES',
+        latitude: selectedAddress.lat,
+        longitude: selectedAddress.lng,
+        location_hint: locationHint.trim() || null,
         host_name: user?.profile?.first_name
           ? `${user.profile.first_name} ${user.profile.last_name || ''}`.trim()
           : user?.username || 'Chef',
@@ -176,7 +222,7 @@ export default function CreateEventScreen({ navigation }) {
     setSaving(false);
   };
 
-  const previewImage = coverImage || CUISINE_IMAGES[cocina] || CUISINE_IMAGES.Italiana;
+  const previewImage = coverImage || CUISINE_IMAGES[cocinas[0]] || CUISINE_IMAGES.Española;
   const hostName = user?.profile?.first_name
     ? `${user.profile.first_name} ${user.profile.last_name || ''}`.trim()
     : user?.username || 'Chef';
@@ -186,7 +232,7 @@ export default function CreateEventScreen({ navigation }) {
       <StepHeader step={step} total={2} stepLabel={step === 1 ? 'Tu cena' : 'Cuándo y cuánto'} onBack={goBack} />
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll} keyboardShouldPersistTaps="handled">
 
           {/* ── PASO 1: Tu cena ── */}
           {step === 1 && (
@@ -215,42 +261,106 @@ export default function CreateEventScreen({ navigation }) {
                 error={touched.title && !title.trim() ? 'Obligatorio' : null}
               />
 
+              {/* Cocinas — multi-select, scroll horizontal */}
               <View style={st.block}>
-                <Text style={st.sectionLabel}>Tipo de cocina *</Text>
-                <View style={st.chips}>
-                  {COCINAS.map((c) => <Chip key={c} label={c} selected={cocina === c} onPress={() => setCocina(c)} />)}
-                </View>
+                <Text style={st.sectionLabel}>Tipo de cocina * {cocinas.length > 0 && `(${cocinas.length})`}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.chipsScroll}>
+                  {CUISINES.map((c) => (
+                    <Chip key={c} label={c} selected={cocinas.includes(c)} onPress={() => toggleCocina(c)} />
+                  ))}
+                </ScrollView>
+                {touched.cocina && cocinas.length === 0 && (
+                  <Text style={st.errorText}>Elige al menos un tipo</Text>
+                )}
               </View>
 
+              {/* Dirección con autocompletado */}
+              <View style={st.block}>
+                <Text style={st.sectionLabel}>Dirección *</Text>
+                <View style={st.addressInputRow}>
+                  <Ionicons name="search" size={16} color={colors.textMuted} />
+                  <TextInput
+                    style={st.addressInput}
+                    placeholder="Busca tu dirección..."
+                    placeholderTextColor={colors.placeholder}
+                    value={addressQuery}
+                    onChangeText={searchAddress}
+                    autoCapitalize="sentences"
+                  />
+                  {searchingAddress && <ActivityIndicator size="small" color={colors.accent} />}
+                </View>
+                {touched.address && !selectedAddress && (
+                  <Text style={st.errorText}>Selecciona una dirección de la lista</Text>
+                )}
+
+                {/* Suggestions dropdown */}
+                {addressSuggestions.length > 0 && (
+                  <View style={st.suggestionsBox}>
+                    {addressSuggestions.map((s, i) => (
+                      <Pressable key={i} style={st.suggestionRow} onPress={() => selectAddress(s)}>
+                        <Ionicons name="location-outline" size={16} color={colors.accent} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={st.suggestionMain} numberOfLines={1}>{s.road}</Text>
+                          <Text style={st.suggestionSub} numberOfLines={1}>{s.city}{s.state ? `, ${s.state}` : ''}</Text>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+
+                {/* Selected address confirmation */}
+                {selectedAddress && (
+                  <View style={st.selectedAddr}>
+                    <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.selectedAddrText}>{selectedAddress.road}</Text>
+                      <Text style={st.selectedAddrCity}>{selectedAddress.city}{selectedAddress.postcode ? ` · ${selectedAddress.postcode}` : ''}</Text>
+                    </View>
+                    <Pressable onPress={() => { setSelectedAddress(null); setAddressQuery(''); }} hitSlop={8}>
+                      <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+
+              {/* Piso / Puerta */}
               <Field
-                label="Ciudad *"
-                placeholder="Málaga"
-                value={city}
-                onChangeText={setCity}
-                autoCapitalize="words"
-                error={touched.city && !city.trim() ? 'Obligatorio' : null}
-              />
-              <Field
-                label="Dirección *"
-                placeholder="Calle Mayor 15"
-                value={address}
-                onChangeText={setAddress}
+                label="Piso, puerta, escalera"
+                placeholder="Ej: 3º izq, Portal B"
+                value={addressLine2}
+                onChangeText={setAddressLine2}
                 autoCapitalize="sentences"
-                error={touched.address && !address.trim() ? 'Obligatorio' : null}
               />
 
-              {/* Descripción opcional plegable */}
+              {/* Indicaciones */}
+              <View style={st.block}>
+                <Text style={st.sectionLabel}>Indicaciones para llegar</Text>
+                <TextInput
+                  style={st.textarea}
+                  placeholder="Ej: Portal azul, el timbre no va, llamadme al llegar"
+                  placeholderTextColor={colors.placeholder}
+                  value={locationHint}
+                  onChangeText={setLocationHint}
+                  multiline
+                  maxLength={200}
+                  textAlignVertical="top"
+                />
+                <Text style={st.hintNote}>Solo visible para comensales confirmados</Text>
+              </View>
+
+              {/* Descripción */}
               {!showDesc ? (
                 <Pressable style={st.addDescBtn} onPress={() => setShowDesc(true)}>
                   <Ionicons name="add" size={16} color={colors.accent} />
                   <Text style={st.addDescText}>Añadir descripción</Text>
+                  <Text style={st.addDescHint}>Cuenta qué hace especial tu cena</Text>
                 </Pressable>
               ) : (
                 <View style={st.block}>
-                  <Text style={st.sectionLabel}>Descripción · opcional</Text>
+                  <Text style={st.sectionLabel}>Descripción · vende tu cena</Text>
                   <TextInput
                     style={st.textarea}
-                    placeholder="Describe la experiencia..."
+                    placeholder="Una velada íntima con los mejores platos de temporada..."
                     placeholderTextColor={colors.placeholder}
                     value={description}
                     onChangeText={setDescription}
@@ -326,7 +436,7 @@ export default function CreateEventScreen({ navigation }) {
                   <View style={st.previewScrim} />
                   <View style={st.previewBody}>
                     <Text style={st.previewHost}>POR {hostName.toUpperCase()}</Text>
-                    <Text style={st.previewCat}>{cocina}{city ? ` · ${city}` : ''}</Text>
+                    <Text style={st.previewCat}>{cocinas.join(' · ') || 'Cocina'}{selectedAddress?.city ? ` · ${selectedAddress.city}` : ''}</Text>
                     <Text style={st.previewTitle} numberOfLines={2}>{title || 'Tu cena'}</Text>
                     <View style={st.previewFooter}>
                       <Text style={st.previewMeta}>
@@ -382,7 +492,9 @@ const st = StyleSheet.create({
   block: { marginBottom: spacing.lg },
   sectionLabel: { ...typography.label, fontSize: 10, color: colors.textMuted, letterSpacing: 1.6, marginBottom: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  chipsScroll: { gap: spacing.xs, paddingRight: spacing.md },
   kicker: { ...typography.label, fontSize: 10, color: colors.accent, letterSpacing: 1.6, marginBottom: spacing.sm },
+  errorText: { ...typography.body, color: colors.accent, fontSize: 11, marginTop: spacing.xxs },
 
   // Photo picker
   photoPicker: {
@@ -402,12 +514,43 @@ const st = StyleSheet.create({
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
   },
 
+  // Address search
+  addressInputRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    borderBottomWidth: borders.medium, borderBottomColor: colors.border,
+    paddingVertical: spacing.xs,
+  },
+  addressInput: {
+    ...typography.body, color: colors.textPrimary, flex: 1, fontSize: 14,
+    paddingVertical: Platform.OS === 'ios' ? spacing.xs : 0,
+  },
+  suggestionsBox: {
+    backgroundColor: colors.surface, borderWidth: borders.hairline, borderColor: colors.borderHairline,
+    marginTop: spacing.xxs,
+  },
+  suggestionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    borderBottomWidth: borders.hairline, borderBottomColor: colors.borderHairline,
+  },
+  suggestionMain: { ...typography.body, color: colors.textPrimary, fontSize: 13 },
+  suggestionSub: { ...typography.label, color: colors.textMuted, fontSize: 10, letterSpacing: 0 },
+  selectedAddr: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    marginTop: spacing.sm, padding: spacing.sm,
+    backgroundColor: 'rgba(76,175,80,0.08)',
+  },
+  selectedAddrText: { ...typography.dinnerTitle, color: colors.textPrimary, fontSize: 14 },
+  selectedAddrCity: { ...typography.label, color: colors.textMuted, fontSize: 10, letterSpacing: 0 },
+  hintNote: { ...typography.label, color: colors.textMuted, fontSize: 9, letterSpacing: 0, marginTop: spacing.xxs, fontStyle: 'italic' },
+
   // Add description
   addDescBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap',
     marginBottom: spacing.lg, paddingVertical: spacing.sm,
   },
   addDescText: { ...typography.label, color: colors.accent, letterSpacing: 1.2, fontSize: 10 },
+  addDescHint: { ...typography.body, color: colors.textMuted, fontSize: 11, width: '100%', marginTop: 2 },
 
   // Textarea
   textarea: {
