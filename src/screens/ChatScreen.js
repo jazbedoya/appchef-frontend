@@ -87,6 +87,7 @@ export default function ChatScreen({ route, navigation }) {
 
   const openRoomId = route?.params?.openRoomId;
   const roomName = route?.params?.roomName;
+  const routeEventId = route?.params?.eventId;
 
   // Hide/show tab bar based on whether a room is open
   useEffect(() => {
@@ -217,7 +218,7 @@ export default function ChatScreen({ route, navigation }) {
     if (!openRoomId || openRoom) return;
     const found = rooms.find(r => r.id === openRoomId);
     if (found) handleOpenRoom(found);
-    else if (openRoomId && roomName) handleOpenRoom({ id: openRoomId, name: roomName });
+    else if (openRoomId && roomName) handleOpenRoom({ id: openRoomId, name: roomName, event_id: routeEventId });
   }, [openRoomId, rooms]);
 
   // ─── Open room + mark read ───
@@ -299,24 +300,15 @@ export default function ChatScreen({ route, navigation }) {
 
   // ─── Location panel ───
   const openLocation = async () => {
-    if (!openRoom?.event_id) {
-      // Fallback: use enriched room data
-      if (openRoom?.event_title) {
-        setEventInfo({
-          address_line1: null,
-          city: openRoom.event_city,
-          event_date: openRoom.event_date,
-        });
-      }
-      setLocationVisible(true);
-      return;
-    }
     setLocationVisible(true);
+    const eid = openRoom?.event_id || routeEventId;
+    if (!eid) { setEventInfo(null); return; }
     try {
-      // Uses the secure GET /events/{id} — address only if confirmed/host
-      const res = await reservationApi.get(`/events/${openRoom.event_id}`);
+      // Uses the secure GET /events/{id} — address only if confirmed/host (JWT sent by axios interceptor)
+      const res = await reservationApi.get(`/events/${eid}`);
       setEventInfo(res.data);
-    } catch {
+    } catch (err) {
+      console.warn('[Chat] Failed to load event info:', err?.message);
       setEventInfo(null);
     }
   };
